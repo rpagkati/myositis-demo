@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Myositis Home Companion</title>
+<style>
+  :root{
+    --bg:#f2f5f8; --surface:#ffffff; --text:#1c2530; --muted:#5b6b7b; --border:#dbe3ea;
+    --primary:#2563a6; --primary-dark:#194673; --primary-bg:#e8f0fa;
+    --success:#1f8a55; --success-bg:#e7f6ee;
+    --warning:#9a6b00; --warning-bg:#fff6df;
+    --danger:#b3241c; --danger-bg:#fdeceb;
+    --radius:10px; --shadow:0 1px 3px rgba(20,30,40,.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.4;}
+  #banner{position:sticky;top:0;z-index:200;background:#7a1f1f;color:#fff;padding:9px 16px;font-size:13px;text-align:center;font-weight:600;box-shadow:var(--shadow);}
+  #banner strong{text-transform:uppercase;letter-spacing:.4px;}
+  header.topnav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;position:sticky;top:34px;z-index:150;box-shadow:var(--shadow);}
+  header.topnav h1{font-size:16px;margin:0;color:var(--primary-dark);white-space:nowrap;}
+  .role-toggle{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:3px;}
+  .role-toggle button{border:none;background:transparent;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .role-toggle button.active{background:var(--primary);color:#fff;}
+  select, input[type=text], input[type=number], input[type=date], textarea{
+    font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);
+  }
+  textarea{width:100%;resize:vertical;}
+  button.btn{font-family:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:6px;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer;}
+  button.btn:hover{background:var(--primary-dark);}
+  button.btn.secondary{background:#fff;color:var(--primary);}
+  button.btn.danger{background:var(--danger);border-color:var(--danger);}
+  button.btn.ghost{background:transparent;border-color:var(--border);color:var(--text);}
+  button.btn:disabled{opacity:.45;cursor:not-allowed;}
+  main{max-width:1080px;margin:0 auto;padding:18px 16px 60px;}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+  .tabs button{border:1px solid var(--border);background:#fff;padding:7px 13px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .tabs button.active{background:var(--primary-bg);color:var(--primary-dark);border-color:var(--primary);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
+  .card h2{margin:0 0 10px;font-size:15px;}
+  .card h3{margin:14px 0 8px;font-size:13.5px;color:var(--primary-dark);}
+  .muted{color:var(--muted);font-size:12.5px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+  .field{margin-bottom:10px;display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:12px;font-weight:600;color:var(--muted);}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table th, table td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);}
+  table th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;}
+  .alert{border-radius:8px;padding:11px 13px;margin-bottom:10px;font-size:13px;border:1px solid transparent;}
+  .alert h4{margin:0 0 4px;font-size:13px;}
+  .alert-danger{background:var(--danger-bg);border-color:#f0b3ad;color:var(--danger);}
+  .alert-warning{background:var(--warning-bg);border-color:#f0d68a;color:var(--warning);}
+  .alert-info{background:var(--primary-bg);border-color:#bcd6f0;color:var(--primary-dark);}
+  .alert-success{background:var(--success-bg);border-color:#a9e0c1;color:var(--success);}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.2px;}
+  .pill-core{background:#e8f0fa;color:#2563a6;} .pill-targeted{background:#f4e8fa;color:#7a2ea6;}
+  .pill-endurance{background:#fff1e0;color:#b06a00;} .pill-aerobic{background:#e7f6ee;color:#1f8a55;}
+  .stop-banner{background:var(--danger);color:#fff;padding:16px;border-radius:var(--radius);font-size:15px;font-weight:700;text-align:center;margin-bottom:14px;box-shadow:0 2px 10px rgba(179,36,28,.4);}
+  .stop-banner .sub{font-weight:500;font-size:12.5px;margin-top:4px;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,25,35,.55);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px;}
+  .modal{background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.3);}
+  .modal h2{margin-top:0;}
+  .patient-card{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;cursor:pointer;background:#fff;transition:background .1s;}
+  .patient-card:hover{background:var(--primary-bg);}
+  .patient-card .name{font-weight:700;font-size:14px;}
+  .exercise-item{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;}
+  .exercise-item .head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
+  .history-list{font-size:11.5px;color:var(--muted);margin-top:6px;padding-left:16px;}
+  .chart-wrap{overflow-x:auto;}
+  svg.chart text{font-size:9.5px;fill:var(--muted);font-family:inherit;}
+  .yesno{display:flex;gap:8px;}
+  .yesno button{flex:1;padding:9px;border-radius:6px;border:1px solid var(--border);background:#fff;font-weight:600;cursor:pointer;}
+  .yesno button.selected-yes{background:var(--danger-bg);border-color:var(--danger);color:var(--danger);}
+  .yesno button.selected-no{background:var(--success-bg);border-color:var(--success);color:var(--success);}
+  .lib-item{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+  .lib-item .region{font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase;}
+  .toggle-row{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+  .switch{position:relative;display:inline-block;width:42px;height:23px;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#c6cfd8;border-radius:24px;transition:.15s;}
+  .slider:before{position:absolute;content:"";height:17px;width:17px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.15s;}
+  input:checked + .slider{background:var(--primary);}
+  input:checked + .slider:before{transform:translateX(19px);}
+  .flag-list{list-style:none;padding:0;margin:0;font-size:12.5px;}
+  .flag-list li{padding:4px 0;border-bottom:1px dashed var(--border);}
+  .review-item{border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:#fafcfe;}
+  .review-item input, .review-item select{width:100%;margin-top:3px;}
+  .legend{display:flex;gap:14px;font-size:11.5px;margin-top:4px;flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
+</style>
+</head>
+<body>
+<div id="banner">
+  <strong>Research Prototype</strong> — Seeded demo data only. Not connected to any real EHR or PHI. Not for clinical use.
+</div>
+<div id="app"></div>
+<footer>Myositis Home Companion · Client-side demo · Data lives only in this browser's local storage</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ======================== Constants ======================== */
+var STORAGE_KEY = "myositisCompanionData_v1";
+var CATEGORIES = ["Core","Targeted","Endurance","Aerobic"];
+var RECOVERY_LABELS = {
+  under30:"Recovered < 30 min", between30and60:"Recovered 30–60 min",
+  over60:"Recovered > 60 min", notRecovered:"Not recovered"
+};
+var DIAGNOSIS_OPTIONS = [
+  "Polymyositis (PM)", "Dermatomyositis (DM)", "Necrotizing myopathy (NM)", "Anti-synthetase syndrome"
+]; // diagnosisSubtype is a free field for future routing; Inclusion Body Myositis (IBM) is explicitly out of scope
+var MUSCLES = [
+  {key:"hipFlexors", label:"Hip flexors"}, {key:"kneeExtensors", label:"Knee extensors"},
+  {key:"shoulderAbductors", label:"Shoulder abductors"}, {key:"ankleDorsiflexors", label:"Ankle dorsiflexors"}
+];
+var FOM_MEASURES = [
+  {key:"gaitSpeed", label:"Gait speed (m/s)"}, {key:"tug", label:"TUG (s)"},
+  {key:"sts30", label:"30s-STS (reps)"}, {key:"sts5x", label:"5x-STS (s)"},
+  {key:"mwt2", label:"2MWT (m)"}, {key:"mwt6", label:"6MWT (m)"},
+  {key:"fi2", label:"FI-2 (score)"}, {key:"fi3", label:"FI-3 (score)"}
+];
+var PROGRESSION_STEPS = {
+  1:{startReps:20, advanceAt:30}, 2:{startReps:15, advanceAt:25}, 3:{startReps:10, advanceAt:20}, 4:{repsRange:[10,20]}
+};
+var REFERENCE_EXERCISES = [
+  {id:"r1", name:"Sit-to-Stand", region:"Hip/Knee", category:"Core", desc:"Rise from a chair to standing without hand assist if tolerated; sit back with control.", equipment:"Sturdy chair"},
+  {id:"r2", name:"Mini Squat", region:"Hip/Knee", category:"Core", desc:"Partial-range squat holding a stable surface as needed.", equipment:"Counter or rail"},
+  {id:"r3", name:"Standing Hip Abduction", region:"Hip", category:"Targeted", desc:"Lift leg sideways with control, hips level, minimal trunk lean.", equipment:"Chair for balance"},
+  {id:"r4", name:"Straight Leg Raise", region:"Hip/Knee", category:"Targeted", desc:"Supine, tighten quad, lift straight leg to hip height.", equipment:"Mat"},
+  {id:"r5", name:"Heel Raises", region:"Ankle", category:"Targeted", desc:"Rise onto toes, lower slowly under control.", equipment:"Counter for balance"},
+  {id:"r6", name:"Seated Ankle Pumps", region:"Ankle", category:"Endurance", desc:"Alternate dorsiflexion/plantarflexion for circulation and endurance.", equipment:"Chair"},
+  {id:"r7", name:"Wall Push-up", region:"Shoulder", category:"Core", desc:"Hands on wall, lower chest toward wall, press back.", equipment:"Wall"},
+  {id:"r8", name:"Shoulder Flexion Raise", region:"Shoulder", category:"Targeted", desc:"Raise arm forward to shoulder height, light or no weight.", equipment:"Optional light dumbbell"},
+  {id:"r9", name:"Scapular Squeeze", region:"Shoulder", category:"Targeted", desc:"Squeeze shoulder blades together, hold, release.", equipment:"None"},
+  {id:"r10", name:"Seated Marching", region:"Hip", category:"Endurance", desc:"Alternate lifting knees while seated, moderate pace.", equipment:"Chair"},
+  {id:"r11", name:"Bridging", region:"Hip/Core", category:"Core", desc:"Supine, lift hips off mat, squeeze glutes, lower slowly.", equipment:"Mat"},
+  {id:"r12", name:"Modified Plank", region:"Core", category:"Core", desc:"Forearm or hands-and-knees plank, brace trunk.", equipment:"Mat"},
+  {id:"r13", name:"Stationary Cycling", region:"Whole Body", category:"Aerobic", desc:"Low resistance, steady cadence, monitor RPE closely.", equipment:"Stationary bike"},
+  {id:"r14", name:"Supported Treadmill Walking", region:"Whole Body", category:"Aerobic", desc:"Level walking at a comfortable pace with rail support available.", equipment:"Treadmill"},
+  {id:"r15", name:"Water Walking", region:"Whole Body", category:"Aerobic", desc:"Chest-deep water walking; buoyancy reduces joint/muscle load.", equipment:"Pool"},
+  {id:"r16", name:"Sit-to-Stand Endurance Set", region:"Hip/Knee", category:"Endurance", desc:"Repeated sit-to-stand cycles at a sustainable pace for time.", equipment:"Sturdy chair"}
+];
+
+/* ======================== Utilities ======================== */
+function pad2(n){ return n<10 ? "0"+n : ""+n; }
+function toISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function todayISO(){ return toISO(new Date()); }
+function parseISO(s){ var p=s.split("-").map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function addDaysISO(s, n){ var d=parseISO(s); d.setDate(d.getDate()+n); return toISO(d); }
+function daysBetween(s1, s2){ return Math.round((parseISO(s2)-parseISO(s1))/86400000); }
+function fmtDate(s){ if(!s) return ""; var d=parseISO(s); return d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
+function uid(prefix){ return prefix+"_"+Math.random().toString(36).slice(2,9); }
+function escapeHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+    return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c];
+  });
+}
+function nowISOTime(){ return new Date().toISOString(); }
+function avg(arr){ return arr.length ? arr.reduce(function(a,b){return a+b;},0)/arr.length : null; }
+
+/* ======================== Seed Data ======================== */
+function buildSeedData(){
+  var today = todayISO();
+
+  // ---- Patient A: normal / steady case ----
+  var aLogs = [];
+  for(var i=20;i>=0;i--){
+    var date = addDaysISO(today, -i);
+    var dow = parseISO(date).getDay(); // 1,3,5 = Mon/Wed/Fri session days
+    if(dow===1||dow===3||dow===5){
+      aLogs.push({date:date, logged:true, completed:true, rpe: 3+(i%3===0?1:0), pain: 1+(i%4===0?1:0),
+        fatigue: 2+(i%5===0?1:0), recovery: (i===9?"over60":"under30"), progressive:false, adlImpact:false,
+        note: i===9?"More tired than usual after session, resolved by next day.":""});
+    } else if(dow===2||dow===4){
+      // rest day, still captures pain/fatigue even though not completed
+      aLogs.push({date:date, logged:true, completed:false, rpe:null, pain:1, fatigue:2, recovery:null,
+        progressive:null, adlImpact:null, note:""});
+    }
+  }
+  // ensure the day after the over60 recovery session has a follow-up log (24h present), 48h missing
+  var over60Date = aLogs.find(function(l){return l.recovery==="over60";}).date;
+  var next1 = addDaysISO(over60Date,1);
+  if(!aLogs.some(function(l){return l.date===next1;})){
+    aLogs.push({date:next1, logged:true, completed:false, rpe:null, pain:2, fatigue:2, recovery:null, progressive:null, adlImpact:null, note:"Felt fine."});
+  }
+
+  var patientA = {
+    id:"p1", name:"Alex Rivera", diagnosisSubtype:"Polymyositis (PM)", sessionsPerWeek:3,
+    targetRPE:{min:3,max:5}, clearedForExercise:true, inFlare:false, sharingEnabled:true, localPtName:"Dana Kim, PT",
+    program:[
+      {id:uid("ex"), name:"Sit-to-Stand", category:"Core", prescription:"2 sets x 10 reps, seated to standing, use hands only if needed",
+        progression:null, history:[{date:addDaysISO(today,-60), prescription:"2 sets x 10 reps, seated to standing, use hands only if needed", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Standing Hip Abduction", category:"Targeted", prescription:"Weighted progression — see progression tracker",
+        progression:{step:2, currentWeight:3, currentReps:25, currentSets:1, ceiling:8},
+        history:[{date:addDaysISO(today,-60), prescription:"Step 1, 20 reps @ 2 lb", changedBy:"clinician"},
+                 {date:addDaysISO(today,-30), prescription:"Advanced to Step 2, 15 reps @ 3 lb", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Seated Marching", category:"Endurance", prescription:"3 sets x 60 seconds, moderate pace",
+        progression:null, history:[{date:addDaysISO(today,-60), prescription:"3 sets x 60 seconds, moderate pace", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Stationary Cycling", category:"Aerobic", prescription:"10 minutes, low resistance, RPE 3-5",
+        progression:null, history:[{date:addDaysISO(today,-60), prescription:"10 minutes, low resistance, RPE 3-5", changedBy:"clinician"}]}
+    ],
+    dailyLogs:aLogs,
+    fom:[
+      {date:addDaysISO(today,-56), gaitSpeed:0.7, tug:14.2, sts30:6, sts5x:18.5, mwt2:110, mwt6:280, fi2:12, fi3:9},
+      {date:addDaysISO(today,-28), gaitSpeed:0.8, tug:12.8, sts30:7, sts5x:16.1, mwt2:120, mwt6:305, fi2:14, fi3:11},
+      {date:addDaysISO(today,-2), gaitSpeed:0.9, tug:11.5, sts30:8, sts5x:14.6, mwt2:130, mwt6:325, fi2:16, fi3:12}
+    ],
+    mmt:[
+      {date:addDaysISO(today,-56), hipFlexors:3, kneeExtensors:3.5, shoulderAbductors:4, ankleDorsiflexors:4},
+      {date:addDaysISO(today,-28), hipFlexors:3.5, kneeExtensors:4, shoulderAbductors:4, ankleDorsiflexors:4.5},
+      {date:addDaysISO(today,-2), hipFlexors:4, kneeExtensors:4, shoulderAbductors:4.5, ankleDorsiflexors:4.5}
+    ],
+    checkinAlerts:[], lastMissedLogPromptHandledDate:null
+  };
+
+  // ---- Patient B: stop/regression case ----
+  var bLogs = [];
+  for(var j=10;j>=4;j--){
+    var bd = addDaysISO(today,-j);
+    bLogs.push({date:bd, logged:true, completed:true, rpe:5, pain:3, fatigue:3, recovery:"under30",
+      progressive:false, adlImpact:false, note:""});
+  }
+  // brief normal soreness blip a while back that resolves - should NOT trigger the rule
+  bLogs.push({date:addDaysISO(today,-9), logged:true, completed:true, rpe:5, pain:4, fatigue:4, recovery:"between30and60", progressive:false, adlImpact:false, note:"A bit sore, expected."});
+  // the qualifying 3 consecutive high-pain/fatigue days ending today, most recent flagged progressive+adlImpact
+  bLogs.push({date:addDaysISO(today,-2), logged:true, completed:true, rpe:7, pain:5, fatigue:6, recovery:"notRecovered", progressive:true, adlImpact:false, note:"Pain lingered through the evening."});
+  bLogs.push({date:addDaysISO(today,-1), logged:true, completed:true, rpe:8, pain:6, fatigue:6, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Pain is worse than yesterday, not improving."});
+  bLogs.push({date:today, logged:true, completed:true, rpe:8, pain:7, fatigue:7, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Struggling with stairs and dressing today."});
+
+  var patientB = {
+    id:"p2", name:"Jordan Blake", diagnosisSubtype:"Dermatomyositis (DM)", sessionsPerWeek:3,
+    targetRPE:{min:3,max:5}, clearedForExercise:true, inFlare:false, sharingEnabled:true, localPtName:"Dana Kim, PT",
+    program:[
+      {id:uid("ex"), name:"Modified Plank", category:"Core", prescription:"2 sets x 20 seconds hold",
+        progression:null, history:[{date:addDaysISO(today,-45), prescription:"2 sets x 20 seconds hold", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Shoulder Flexion Raise", category:"Targeted", prescription:"Weighted progression — see progression tracker",
+        progression:{step:1, currentWeight:2, currentReps:18, currentSets:1, ceiling:6},
+        history:[{date:addDaysISO(today,-45), prescription:"Step 1, 20 reps @ 2 lb", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Seated Ankle Pumps", category:"Endurance", prescription:"3 sets x 45 seconds",
+        progression:null, history:[{date:addDaysISO(today,-45), prescription:"3 sets x 45 seconds", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Supported Treadmill Walking", category:"Aerobic", prescription:"8 minutes level walking, rail support available",
+        progression:null, history:[{date:addDaysISO(today,-45), prescription:"8 minutes level walking, rail support available", changedBy:"clinician"}]}
+    ],
+    dailyLogs:bLogs,
+    fom:[
+      {date:addDaysISO(today,-40), gaitSpeed:0.65, tug:15.8, sts30:5, sts5x:20.2, mwt2:95, mwt6:250, fi2:10, fi3:8}
+    ],
+    mmt:[
+      {date:addDaysISO(today,-40), hipFlexors:3, kneeExtensors:3, shoulderAbductors:3.5, ankleDorsiflexors:3.5}
+    ],
+    checkinAlerts:[], lastMissedLogPromptHandledDate:null
+  };
+
+  // ---- Patient C: missed-log case (sharing off) ----
+  var cLogs = [];
+  for(var k=14;k>=6;k--){
+    var cd = addDaysISO(today,-k);
+    var cdow = parseISO(cd).getDay();
+    if(cdow===2||cdow===5){
+      cLogs.push({date:cd, logged:true, completed:true, rpe:4, pain:2, fatigue:2, recovery:"under30", progressive:false, adlImpact:false, note:""});
+    }
+  }
+  // last completed session 5 days ago; nothing logged since (missed 3+ consecutive days)
+  var lastCompletedDate = addDaysISO(today,-5);
+  cLogs.push({date:lastCompletedDate, logged:true, completed:true, rpe:4, pain:3, fatigue:4, recovery:"between30and60", progressive:false, adlImpact:false, note:"Fine, just tired."});
+
+  var patientC = {
+    id:"p3", name:"Sam Okafor", diagnosisSubtype:"Anti-synthetase syndrome", sessionsPerWeek:2,
+    targetRPE:{min:2,max:4}, clearedForExercise:true, inFlare:false, sharingEnabled:false, localPtName:"Marcus Ellis, PT",
+    program:[
+      // intentionally missing Endurance and Aerobic to demonstrate the composition audit
+      {id:uid("ex"), name:"Bridging", category:"Core", prescription:"2 sets x 12 reps",
+        progression:null, history:[{date:addDaysISO(today,-30), prescription:"2 sets x 12 reps", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Straight Leg Raise", category:"Targeted", prescription:"2 sets x 10 reps each leg",
+        progression:null, history:[{date:addDaysISO(today,-30), prescription:"2 sets x 10 reps each leg", changedBy:"clinician"}]}
+    ],
+    dailyLogs:cLogs,
+    fom:[{date:addDaysISO(today,-30), gaitSpeed:0.6, tug:16.5, sts30:4, sts5x:22.0, mwt2:85, mwt6:230, fi2:9, fi3:7}],
+    mmt:[{date:addDaysISO(today,-30), hipFlexors:2.5, kneeExtensors:3, shoulderAbductors:3, ankleDorsiflexors:3}],
+    checkinAlerts:[], lastMissedLogPromptHandledDate:null
+  };
+
+  return {patients:[patientA, patientB, patientC]};
+}
+
+/* ======================== Storage ======================== */
+function loadData(){
+  var raw = localStorage.getItem(STORAGE_KEY);
+  if(raw){
+    try{ return JSON.parse(raw); }catch(e){ /* fall through to reseed */ }
+  }
+  var seeded = buildSeedData();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+  return seeded;
+}
+function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(Data)); }
+function resetDemoData(){
+  if(!confirm("Reset all demo data back to the seeded starting state? This cannot be undone.")) return;
+  Data = buildSeedData();
+  saveData();
+  State.patientId = Data.patients[0].id;
+  State.clinicianSelectedPatientId = null; State.clinicianView = "list";
+  render();
+}
+
+var Data = loadData();
+function getPatient(id){ return Data.patients.find(function(p){ return p.id===id; }); }
+
+/* ======================== Rule Engine (deterministic, clinician-authored) ======================== */
+var Rules = {};
+
+// Rule 1: gate check
+Rules.gateCheck = function(patient){
+  if(!patient.clearedForExercise){
+    return {blocked:true, message:"Hold, not cleared.", reason:"Not cleared for exercise by physician."};
+  }
+  if(patient.inFlare){
+    return {blocked:true, message:"Hold, not cleared.", reason:"Currently in flare."};
+  }
+  return {blocked:false};
+};
+
+// Rule 2: stop / regression
+Rules.stopRegressionCheck = function(patient){
+  var logged = patient.dailyLogs.filter(function(l){ return l.logged; })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  if(logged.length<3) return {triggered:false};
+  var last3 = logged.slice(-3);
+  var consecutiveCalendar = daysBetween(last3[0].date,last3[1].date)===1 && daysBetween(last3[1].date,last3[2].date)===1;
+  var allHigh = last3.every(function(d){ return (d.pain!=null && d.pain>=5) || (d.fatigue!=null && d.fatigue>=5); });
+  var mostRecent = last3[2];
+  var recentFlags = mostRecent.progressive===true && mostRecent.adlImpact===true;
+  if(consecutiveCalendar && allHigh && recentFlags){
+    return {triggered:true, message:"STOP — contact PT/physician immediately", days:last3};
+  }
+  return {triggered:false};
+};
+
+// Rule 3: missed-log check-in
+Rules.missedLogCheck = function(patient){
+  var logged = patient.dailyLogs.filter(function(l){ return l.logged; })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  if(!logged.length) return {shouldPrompt:false};
+  var lastLog = logged[logged.length-1];
+  var gap = daysBetween(lastLog.date, todayISO());
+  if(gap<3) return {shouldPrompt:false};
+  var lastCompleted = null;
+  for(var i=logged.length-1;i>=0;i--){ if(logged[i].completed){ lastCompleted=logged[i]; break; } }
+  return {shouldPrompt:true, daysSinceLastLog:gap, lastLogDate:lastLog.date, lastCompletedLog:lastCompleted};
+};
+Rules.checkinConcernFlag = function(entry){
+  return entry.afterSessionPain>=5 || entry.afterSessionFatigue>=5 ||
+         entry.currentPain>=5 || entry.currentFatigue>=5 || entry.concernNoted===true;
+};
+
+// Rule 4: recovery-time flag
+Rules.recoveryTimeFlags = function(patient){
+  var byDate = {};
+  patient.dailyLogs.forEach(function(l){ if(l.logged) byDate[l.date]=l; });
+  var flagged = patient.dailyLogs.filter(function(l){
+    return l.completed && (l.recovery==="over60" || l.recovery==="notRecovered");
+  });
+  return flagged.map(function(l){
+    var d24 = addDaysISO(l.date,1), d48 = addDaysISO(l.date,2);
+    return {
+      sessionDate:l.date, recovery:l.recovery,
+      has24h: !!byDate[d24], date24:d24,
+      has48h: !!byDate[d48], date48:d48
+    };
+  });
+};
+
+// Rule 5: weighted progression status (read-only info; advancing is a separate explicit clinician action)
+Rules.progressionStatus = function(progression){
+  if(!progression) return null;
+  var step = progression.step;
+  if(step<4){
+    var def = PROGRESSION_STEPS[step];
+    var readyToAdvance = progression.currentReps>=def.advanceAt;
+    return {step:step, readyToAdvance:readyToAdvance, target:def.advanceAt, startReps:def.startReps, atCeiling:false};
+  }
+  var atCeiling = progression.currentWeight>=progression.ceiling && progression.currentSets>=3;
+  var readyToAddSet = progression.currentReps>=PROGRESSION_STEPS[4].repsRange[1] && progression.currentSets<3;
+  return {step:4, readyToAdvance:readyToAddSet, atCeiling:atCeiling};
+};
+Rules.advanceProgression = function(progression, newWeight){
+  // Explicit clinician-confirmed transition. Never called automatically.
+  if(progression.step<4){
+    progression.step += 1;
+    progression.currentReps = PROGRESSION_STEPS[progression.step===4?4:progression.step].startReps || PROGRESSION_STEPS[progression.step].startReps;
+    progression.currentWeight = newWeight!=null ? newWeight : progression.currentWeight;
+    progression.currentSets = 1;
+  } else {
+    progression.currentSets = Math.min(3, progression.currentSets+1);
+    progression.currentReps = PROGRESSION_STEPS[4].repsRange[0];
+  }
+  return progression;
+};
+
+// Rule 6: program composition audit
+Rules.programCompositionAudit = function(patient){
+  return CATEGORIES.filter(function(cat){
+    return !patient.program.some(function(e){ return e.category===cat; });
+  });
+};
+
+// Rule 7: session-split suggestion
+Rules.sessionSplitSuggestion = function(patient){
+  var recent = patient.dailyLogs.filter(function(l){ return l.completed && l.rpe!=null; })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; }).slice(-10);
+  if(recent.length<3) return {suggest:false, avgRpe:null, count:recent.length};
+  var mean = avg(recent.map(function(l){ return l.rpe; }));
+  return {suggest: mean>5, avgRpe:mean, count:recent.length};
+};
+
+window.Rules = Rules; // exposed for manual/console testing
+
+/* ======================== Charts (inline SVG, no external library) ======================== */
+function svgLineChart(series, opts){
+  opts = opts||{};
+  var w = opts.width||560, h = opts.height||180, pad = {t:14,r:14,b:26,l:38};
+  var allPoints = [];
+  series.forEach(function(s){ s.points.forEach(function(p){ allPoints.push(p); }); });
+  if(!allPoints.length) return '<div class="muted">No data yet.</div>';
+  var dates = allPoints.map(function(p){return p.date;}).sort();
+  var minDate = dates[0], maxDate = dates[dates.length-1];
+  var values = allPoints.map(function(p){return p.value;});
+  var yMin = opts.yMin!=null ? opts.yMin : Math.min.apply(null, values);
+  var yMax = opts.yMax!=null ? opts.yMax : Math.max.apply(null, values);
+  if(yMin===yMax){ yMin -= 1; yMax += 1; }
+  var span = daysBetween(minDate,maxDate)||1;
+  function x(date){ return pad.l + (daysBetween(minDate,date)/span) * (w-pad.l-pad.r); }
+  function y(val){ return h-pad.b - ((val-yMin)/(yMax-yMin)) * (h-pad.t-pad.b); }
+  var svg = '<svg class="chart" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">';
+  // axes
+  svg += '<line x1="'+pad.l+'" y1="'+(h-pad.b)+'" x2="'+(w-pad.r)+'" y2="'+(h-pad.b)+'" stroke="#d8e0e6"/>';
+  svg += '<line x1="'+pad.l+'" y1="'+pad.t+'" x2="'+pad.l+'" y2="'+(h-pad.b)+'" stroke="#d8e0e6"/>';
+  svg += '<text x="4" y="'+(y(yMax)+4)+'">'+ (Math.round(yMax*100)/100) +'</text>';
+  svg += '<text x="4" y="'+(y(yMin)+4)+'">'+ (Math.round(yMin*100)/100) +'</text>';
+  svg += '<text x="'+pad.l+'" y="'+(h-6)+'">'+fmtDate(minDate)+'</text>';
+  svg += '<text x="'+(w-pad.r-54)+'" y="'+(h-6)+'">'+fmtDate(maxDate)+'</text>';
+  series.forEach(function(s){
+    var pts = s.points.slice().sort(function(a,b){return a.date<b.date?-1:1;});
+    if(!pts.length) return;
+    var path = pts.map(function(p,i){ return (i===0?"M":"L")+x(p.date).toFixed(1)+","+y(p.value).toFixed(1); }).join(" ");
+    svg += '<path d="'+path+'" fill="none" stroke="'+s.color+'" stroke-width="2"/>';
+    pts.forEach(function(p){
+      svg += '<circle cx="'+x(p.date).toFixed(1)+'" cy="'+y(p.value).toFixed(1)+'" r="3" fill="'+s.color+'"><title>'+fmtDate(p.date)+': '+p.value+'</title></circle>';
+    });
+  });
+  svg += '</svg>';
+  var legend = '<div class="legend">'+series.map(function(s){
+    return '<span><i style="background:'+s.color+'"></i>'+escapeHtml(s.name)+'</span>';
+  }).join("")+'</div>';
+  return '<div class="chart-wrap">'+svg+legend+'</div>';
+}
+
+/* ======================== App State ======================== */
+var State = {
+  role:"patient",
+  patientId: Data.patients[0].id,
+  clinicianView:"list",
+  clinicianSelectedPatientId:null,
+  clinicianDetailTab:"alerts",
+  patientView:"dashboard",
+  libraryFilter:{search:"", region:"All"},
+  fomMeasure:"gaitSpeed",
+  mmtMuscle:"hipFlexors",
+  checkinDraft:null,
+  pdfReview:null,
+  pdfError:null
+};
+
+function el(id){ return document.getElementById(id); }
+
+/* ======================== Actions ======================== */
+var Actions = {};
+
+Actions.setRole = function(role){ State.role=role; render(); };
+Actions.setPatientId = function(id){ State.patientId=id; render(); };
+Actions.setPatientView = function(v){ State.patientView=v; render(); };
+Actions.openClinicianPatient = function(id){ State.clinicianSelectedPatientId=id; State.clinicianView="detail"; State.clinicianDetailTab="alerts"; render(); };
+Actions.backToPatientList = function(){ State.clinicianView="list"; State.clinicianSelectedPatientId=null; render(); };
+Actions.setClinicianTab = function(t){ State.clinicianDetailTab=t; render(); };
+Actions.resetDemo = function(){ resetDemoData(); };
+
+Actions.setLibraryFilter = function(field, val){ State.libraryFilter[field]=val; render(); };
+Actions.setFomMeasure = function(v){ State.fomMeasure=v; render(); };
+Actions.setMmtMuscle = function(v){ State.mmtMuscle=v; render(); };
+
+Actions.toggleSharing = function(){
+  var p = getPatient(State.patientId);
+  p.sharingEnabled = !p.sharingEnabled;
+  saveData(); render();
+};
+
+Actions.toggleClearance = function(patientId){
+  var p = getPatient(patientId); p.clearedForExercise = !p.clearedForExercise; saveData(); render();
+};
+Actions.toggleFlare = function(patientId){
+  var p = getPatient(patientId); p.inFlare = !p.inFlare; saveData(); render();
+};
+
+Actions.saveDailyLog = function(ev){
+  ev.preventDefault();
+  var f = ev.target;
+  var p = getPatient(State.patientId);
+  var date = todayISO();
+  var completed = f.completed.checked;
+  var entry = {
+    date:date, logged:true, completed:completed,
+    rpe: completed ? Number(f.rpe.value) : null,
+    pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
+    recovery: completed ? f.recovery.value : null,
+    progressive: completed ? f.progressive.checked : null,
+    adlImpact: completed ? f.adlImpact.checked : null,
+    note: f.note.value.trim()
+  };
+  var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
+  if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
+  saveData(); render();
+};
+
+Actions.submitCheckin = function(ev){
+  ev.preventDefault();
+  var f = ev.target;
+  var p = getPatient(State.patientId);
+  var missed = Rules.missedLogCheck(p);
+  var lastCompleted = missed.lastCompletedLog;
+  var entry = {
+    date: todayISO(),
+    afterSessionPain: lastCompleted ? lastCompleted.pain : null,
+    afterSessionFatigue: lastCompleted ? lastCompleted.fatigue : null,
+    currentPain: Number(f.currentPain.value),
+    currentFatigue: Number(f.currentFatigue.value),
+    feeling: f.feeling.value.trim(),
+    concernNoted: State.checkinDraft.concern === "yes"
+  };
+  p.checkinAlerts.push(entry);
+  p.lastMissedLogPromptHandledDate = todayISO();
+  var flagged = Rules.checkinConcernFlag(entry);
+  State.checkinDraft = null;
+  saveData();
+  render();
+  if(flagged){
+    if(p.sharingEnabled){
+      alert("Thanks for checking in. This has been flagged for your PT, "+p.localPtName+", to review.");
+    } else {
+      alert("Thanks for checking in. Sharing is currently off, so this was not sent to your PT automatically — please reach out directly to "+p.localPtName+" or your physician.");
+    }
+  } else {
+    alert("Thanks for checking in! Glad to hear you're doing okay.");
+  }
+};
+
+Actions.dismissCheckinNudge = function(){
+  var p = getPatient(State.patientId);
+  p.lastMissedLogPromptHandledDate = todayISO();
+  saveData(); render();
+};
+// Deliberately avoids a full render(): the check-in form may already have
+// unsaved pain/fatigue/feeling text typed into it, and re-rendering would
+// wipe those values. Updates state + the DOM in place instead.
+Actions.setCheckinConcern = function(btn, val){
+  State.checkinDraft.concern = val;
+  var group = btn.parentElement;
+  Array.prototype.forEach.call(group.querySelectorAll("button"), function(b){
+    b.classList.remove("selected-yes","selected-no");
+  });
+  btn.classList.add(val==="yes" ? "selected-yes" : "selected-no");
+  var submitBtn = btn.closest("form").querySelector('button[type=submit]');
+  submitBtn.disabled = false;
+};
+Actions.startCheckin = function(){ State.checkinDraft = {concern:null}; render(); };
+
+Actions.editPrescription = function(patientId, exerciseId){
+  var p = getPatient(patientId);
+  var ex = p.program.find(function(e){ return e.id===exerciseId; });
+  var next = prompt("Update prescription for \""+ex.name+"\":", ex.prescription);
+  if(next==null || next.trim()===ex.prescription.trim()) return;
+  ex.prescription = next.trim();
+  ex.history.push({date: nowISOTime(), prescription: ex.prescription, changedBy:"clinician"});
+  saveData(); render();
+};
+
+Actions.confirmAdvance = function(patientId, exerciseId){
+  var p = getPatient(patientId);
+  var ex = p.program.find(function(e){ return e.id===exerciseId; });
+  var status = Rules.progressionStatus(ex.progression);
+  var msg = status.readyToAdvance
+    ? "Criteria met. Confirm advancing \""+ex.name+"\" to the next step?"
+    : "Criteria not yet met for \""+ex.name+"\". Advance anyway based on clinical judgment?";
+  if(!confirm(msg)) return;
+  var newWeight = ex.progression.currentWeight;
+  if(ex.progression.step<4){
+    var w = prompt("New weight (lb) for step "+(ex.progression.step+1)+":", ex.progression.currentWeight);
+    if(w==null) return;
+    newWeight = Number(w);
+  }
+  Rules.advanceProgression(ex.progression, newWeight);
+  ex.history.push({date: nowISOTime(), prescription:"Advanced to step "+ex.progression.step+", "+ex.progression.currentReps+" reps @ "+ex.progression.currentWeight+" lb, "+ex.progression.currentSets+" set(s)", changedBy:"clinician"});
+  saveData(); render();
+};
+
+Actions.saveFom = function(ev){
+  ev.preventDefault();
+  var f = ev.target;
+  var p = getPatient(State.clinicianSelectedPatientId);
+  var entry = {date: f.date.value};
+  FOM_MEASURES.forEach(function(m){ entry[m.key] = f[m.key].value===""?null:Number(f[m.key].value); });
+  p.fom.push(entry);
+  p.fom.sort(function(a,b){ return a.date<b.date?-1:1; });
+  saveData(); render();
+};
+Actions.saveMmt = function(ev){
+  ev.preventDefault();
+  var f = ev.target;
+  var p = getPatient(State.clinicianSelectedPatientId);
+  var entry = {date: f.date.value};
+  MUSCLES.forEach(function(m){ entry[m.key] = f[m.key].value===""?null:Number(f[m.key].value); });
+  p.mmt.push(entry);
+  p.mmt.sort(function(a,b){ return a.date<b.date?-1:1; });
+  saveData(); render();
+};
+
+Actions.pdfFileChosen = function(input){
+  var file = input.files[0];
+  if(!file) return;
+  State.pdfError = null;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var typedArray = new Uint8Array(reader.result);
+    if(typeof pdfjsLib === "undefined"){
+      State.pdfError = "PDF library failed to load from CDN (no network access?). Try again when online.";
+      render(); return;
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    pdfjsLib.getDocument({data:typedArray}).promise.then(function(doc){
+      var pagePromises = [];
+      for(var i=1;i<=doc.numPages;i++){
+        pagePromises.push(doc.getPage(i).then(function(page){
+          return page.getTextContent().then(function(tc){
+            return tc.items.map(function(it){ return it.str; }).join("\n");
+          });
+        }));
+      }
+      return Promise.all(pagePromises);
+    }).then(function(pagesText){
+      var fullText = pagesText.join("\n");
+      State.pdfReview = heuristicParseHep(fullText);
+      render();
+    }).catch(function(err){
+      State.pdfError = "Could not parse this PDF: "+err.message;
+      render();
+    });
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+function heuristicParseHep(text){
+  var rawLines = text.split(/\n/).map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; });
+  var keywordRe = /(\d+\s*(x|reps|sets|sec|seconds|min|minutes)\b)|(\bx\s*\d+)/i;
+  var items = [];
+  var current = null;
+  rawLines.forEach(function(line){
+    var looksLikePrescription = keywordRe.test(line);
+    var looksLikeName = !looksLikePrescription && line.length<60 && /[a-zA-Z]/.test(line);
+    if(looksLikeName){
+      if(current) items.push(current);
+      current = {name:line, prescription:"", category:"Core"};
+    } else if(current){
+      current.prescription = (current.prescription ? current.prescription+" " : "") + line;
+    } else {
+      current = {name:line.slice(0,50), prescription:"", category:"Core"};
+    }
+  });
+  if(current) items.push(current);
+  return items.filter(function(it){ return it.name; }).map(function(it,i){
+    return {id:"parsed_"+i, name:it.name, prescription:it.prescription || "(review — no prescription detected)", category:"Core", include:true};
+  });
+}
+
+Actions.updatePdfReviewField = function(idx, field, val){
+  State.pdfReview[idx][field] = val;
+};
+Actions.togglePdfInclude = function(idx){
+  State.pdfReview[idx].include = !State.pdfReview[idx].include; render();
+};
+Actions.cancelPdfReview = function(){ State.pdfReview=null; render(); };
+Actions.confirmPdfImport = function(){
+  var p = getPatient(State.clinicianSelectedPatientId);
+  var added = 0;
+  State.pdfReview.forEach(function(item){
+    if(!item.include) return;
+    p.program.push({
+      id:uid("ex"), name:item.name.trim() || "Untitled exercise", category:item.category,
+      prescription:item.prescription.trim(), progression:null,
+      history:[{date:nowISOTime(), prescription:item.prescription.trim(), changedBy:"clinician (PDF import)"}]
+    });
+    added++;
+  });
+  State.pdfReview = null;
+  saveData(); render();
+  alert(added+" exercise(s) added to the program from the imported PDF.");
+};
+
+/* ======================== Render: shared ======================== */
+function render(){
+  var app = el("app");
+  app.innerHTML = renderTopNav() + (State.role==="patient" ? renderPatientRole() : renderClinicianRole());
+}
+
+function renderTopNav(){
+  var patientOptions = Data.patients.map(function(p){
+    return '<option value="'+p.id+'"'+(p.id===State.patientId?" selected":"")+'>'+escapeHtml(p.name)+'</option>';
+  }).join("");
+  return '<header class="topnav">'+
+    '<h1>Myositis Home Companion</h1>'+
+    '<div class="role-toggle">'+
+      '<button class="'+(State.role==="patient"?"active":"")+'" onclick="Actions.setRole(\'patient\')">Patient View</button>'+
+      '<button class="'+(State.role==="clinician"?"active":"")+'" onclick="Actions.setRole(\'clinician\')">Clinician View</button>'+
+    '</div>'+
+    (State.role==="patient" ? (
+      '<div class="row"><label class="muted" style="font-size:12px;">Viewing as (demo login):</label>'+
+      '<select onchange="Actions.setPatientId(this.value)">'+patientOptions+'</select></div>'
+    ) : "")+
+    '<div style="flex:1"></div>'+
+    '<button class="btn ghost" onclick="Actions.resetDemo()">Reset demo data</button>'+
+  '</header>';
+}
+
+/* ======================== Render: Patient role ======================== */
+function renderPatientRole(){
+  var p = getPatient(State.patientId);
+  var tabs = [["dashboard","Dashboard"],["log","Daily Log"],["program","My Program"],["library","Exercise Library"],["trends","Trends"],["sharing","Sharing"]];
+  var html = '<main>';
+  html += '<div class="tabs">'+tabs.map(function(t){
+    return '<button class="'+(State.patientView===t[0]?"active":"")+'" onclick="Actions.setPatientView(\''+t[0]+'\')">'+t[1]+'</button>';
+  }).join("")+'</div>';
+
+  var gate = Rules.gateCheck(p);
+  if(gate.blocked){
+    html += '<div class="alert alert-warning"><h4>⚠ '+gate.message+'</h4>'+gate.reason+' Please contact your PT or physician before continuing your program.</div>';
+  }
+  var stop = Rules.stopRegressionCheck(p);
+  if(stop.triggered){
+    html += '<div class="stop-banner">⛔ '+stop.message+'<div class="sub">Pain or fatigue ≥5 for 3 days in a row, with today affecting your daily activities and building on recent exercise. Please do not continue exercising until you’ve spoken with your PT or physician.</div></div>';
+  }
+
+  // Missed-log check-in modal
+  var missed = Rules.missedLogCheck(p);
+  if(missed.shouldPrompt && p.lastMissedLogPromptHandledDate!==todayISO()){
+    html += renderCheckinModal(p, missed);
+  }
+
+  if(State.patientView==="dashboard") html += renderPatientDashboard(p);
+  else if(State.patientView==="log") html += renderPatientLog(p);
+  else if(State.patientView==="program") html += renderPatientProgram(p);
+  else if(State.patientView==="library") html += renderLibrary();
+  else if(State.patientView==="trends") html += renderPatientTrends(p);
+  else if(State.patientView==="sharing") html += renderSharing(p);
+
+  html += '</main>';
+  return html;
+}
+
+function renderCheckinModal(p, missed){
+  if(!State.checkinDraft){
+    return '<div class="modal-overlay"><div class="modal">'+
+      '<h2>Welcome back!</h2>'+
+      '<p>We haven’t seen a log from you in '+missed.daysSinceLastLog+' days (since '+fmtDate(missed.lastLogDate)+'). '+
+      'If you’ve been doing well, no worries at all — just pick back up with today’s plan whenever you’re ready.</p>'+
+      '<p class="muted">We’d also like a quick before/after check so we can keep an eye on how you’re doing.</p>'+
+      '<div class="row" style="justify-content:flex-end;margin-top:14px;">'+
+        '<button class="btn ghost" onclick="Actions.dismissCheckinNudge()">Skip for now</button>'+
+        '<button class="btn" onclick="Actions.startCheckin()">Quick check-in</button>'+
+      '</div>'+
+    '</div></div>';
+  }
+  var lc = missed.lastCompletedLog;
+  var draft = State.checkinDraft;
+  return '<div class="modal-overlay"><div class="modal">'+
+    '<h2>Quick check-in</h2>'+
+    (lc ? '<p class="muted">After your last completed session on <strong>'+fmtDate(lc.date)+'</strong>, you logged pain <strong>'+lc.pain+'/10</strong> and fatigue <strong>'+lc.fatigue+'/10</strong>.</p>'
+        : '<p class="muted">We don’t have a completed session on file yet.</p>')+
+    '<form onsubmit="Actions.submitCheckin(event)">'+
+      '<div class="grid">'+
+        '<div class="field"><label>How is your pain right now? (0–10)</label><input type="number" name="currentPain" min="0" max="10" required></div>'+
+        '<div class="field"><label>How is your fatigue right now? (0–10)</label><input type="number" name="currentFatigue" min="0" max="10" required></div>'+
+      '</div>'+
+      '<div class="field"><label>How have you been feeling?</label><textarea name="feeling" rows="2" placeholder="Anything you want your PT to know..."></textarea></div>'+
+      '<div class="field"><label>Do you have any concerns you’d like your PT to know about?</label>'+
+        '<div class="yesno">'+
+          '<button type="button" class="'+(draft.concern==="yes"?"selected-yes":"")+'" onclick="Actions.setCheckinConcern(this,\'yes\')">Yes</button>'+
+          '<button type="button" class="'+(draft.concern==="no"?"selected-no":"")+'" onclick="Actions.setCheckinConcern(this,\'no\')">No</button>'+
+        '</div></div>'+
+      '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
+        '<button type="submit" class="btn" '+(draft.concern===null?"disabled":"")+'>Submit check-in</button>'+
+      '</div>'+
+    '</form>'+
+  '</div></div>';
+}
+
+function renderPatientDashboard(p){
+  var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); });
+  var recentLogs = p.dailyLogs.filter(function(l){return l.logged;}).slice(-7);
+  var adherenceNum = recentLogs.filter(function(l){return l.completed;}).length;
+  var html = '<div class="card"><h2>Welcome back, '+escapeHtml(p.name)+'</h2>';
+  html += '<p class="muted">Diagnosis subtype (demo field): '+escapeHtml(p.diagnosisSubtype)+' &middot; Target sessions: '+p.sessionsPerWeek+'/week &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p>';
+  if(!todayLog){
+    html += '<div class="alert alert-info">You haven’t logged today yet. <button class="btn secondary" style="margin-left:8px" onclick="Actions.setPatientView(\'log\')">Log today</button></div>';
+  } else {
+    html += '<div class="alert alert-success">Today’s entry is logged. Thank you!</div>';
+  }
+  html += '<p>Last 7 logged days: <strong>'+adherenceNum+'</strong> of <strong>'+recentLogs.length+'</strong> completed.</p>';
+  html += '</div>';
+  return html;
+}
+
+function renderPatientLog(p){
+  var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
+  var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
+  html += '<p class="muted">Pain and fatigue are captured every day, whether or not you exercised.</p>';
+  html += '<form onsubmit="Actions.saveDailyLog(event)">';
+  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\'"> I completed my exercise session today</label></div>';
+  html += '<div class="grid">';
+  html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
+  html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '</div>';
+  html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
+  html += '<div class="grid">';
+  html += '<div class="field"><label>RPE (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'"></div>';
+  html += '<div class="field"><label>Recovery time</label><select name="recovery">'+
+    Object.keys(RECOVERY_LABELS).map(function(k){ return '<option value="'+k+'"'+(todayLog.recovery===k?" selected":"")+'>'+RECOVERY_LABELS[k]+'</option>'; }).join("")+
+    '</select></div>';
+  html += '</div>';
+  html += '<div class="field"><label><input type="checkbox" name="progressive" '+(todayLog.progressive?"checked":"")+'> My symptoms feel progressively worse (not just normal soreness)</label></div>';
+  html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
+  html += '</div>';
+  html += '<div class="field"><label>Note (optional)</label><textarea name="note" rows="2">'+escapeHtml(todayLog.note||"")+'</textarea></div>';
+  html += '<button type="submit" class="btn">Save today’s log</button>';
+  html += '</form></div>';
+
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>RPE</th><th>Pain</th><th>Fatigue</th><th>Recovery</th></tr>';
+  p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
+    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td><td>'+(l.recovery?RECOVERY_LABELS[l.recovery]:"—")+'</td></tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
+function renderPatientProgram(p){
+  var html = '<div class="card"><h2>Foundation Program</h2><p class="muted">Read-only — your PT manages changes to this program.</p>';
+  p.program.forEach(function(ex){
+    html += '<div class="exercise-item"><div class="head"><strong>'+escapeHtml(ex.name)+'</strong><span class="pill pill-'+ex.category.toLowerCase()+'">'+ex.category+'</span></div>';
+    html += '<p>'+escapeHtml(ex.prescription)+'</p>';
+    if(ex.progression){
+      var st = Rules.progressionStatus(ex.progression);
+      html += '<p class="muted">Step '+ex.progression.step+' of 4 &middot; '+ex.progression.currentReps+' reps @ '+ex.progression.currentWeight+' lb &middot; '+ex.progression.currentSets+' set(s)</p>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderLibrary(){
+  var f = State.libraryFilter;
+  var regions = ["All"].concat(Array.from(new Set(REFERENCE_EXERCISES.map(function(e){return e.region;}))));
+  var items = REFERENCE_EXERCISES.filter(function(e){
+    var matchesRegion = f.region==="All" || e.region===f.region;
+    var matchesSearch = !f.search || (e.name+" "+e.desc).toLowerCase().indexOf(f.search.toLowerCase())>=0;
+    return matchesRegion && matchesSearch;
+  });
+  var html = '<div class="card"><h2>Reference Exercise Library</h2><p class="muted">Informational only — browsing here never changes your actual program.</p>';
+  html += '<div class="row" style="margin-bottom:12px;">';
+  html += '<input type="text" placeholder="Search exercises..." value="'+escapeHtml(f.search)+'" oninput="Actions.setLibraryFilter(\'search\', this.value)">';
+  html += '<select onchange="Actions.setLibraryFilter(\'region\', this.value)">'+regions.map(function(r){ return '<option value="'+r+'"'+(f.region===r?" selected":"")+'>'+r+'</option>'; }).join("")+'</select>';
+  html += '</div>';
+  if(!items.length) html += '<p class="muted">No exercises match your filters.</p>';
+  items.forEach(function(e){
+    html += '<div class="lib-item"><div class="region">'+e.region+' &middot; '+e.category+'</div><strong>'+e.name+'</strong><p class="muted" style="margin:4px 0 0;">'+e.desc+'</p><p class="muted" style="margin:2px 0 0;">Equipment: '+e.equipment+'</p></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderPatientTrends(p){
+  var html = '<div class="card"><h2>Adherence</h2>';
+  var loggedRecent = p.dailyLogs.filter(function(l){return l.logged;});
+  var completedRecent = loggedRecent.filter(function(l){return l.completed;});
+  var pct = loggedRecent.length ? Math.round(100*completedRecent.length/loggedRecent.length) : 0;
+  html += '<p>Overall adherence: <strong>'+pct+'%</strong> ('+completedRecent.length+' of '+loggedRecent.length+' logged days completed)</p></div>';
+
+  html += '<div class="card"><h2>RPE / Pain / Fatigue over time</h2>';
+  var series = [
+    {name:"RPE", color:"#2563a6", points: p.dailyLogs.filter(function(l){return l.rpe!=null;}).map(function(l){return {date:l.date,value:l.rpe};})},
+    {name:"Pain", color:"#b3241c", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.pain};})},
+    {name:"Fatigue", color:"#9a6b00", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.fatigue};})}
+  ];
+  html += svgLineChart(series, {yMin:0, yMax:10});
+  html += '</div>';
+
+  html += '<div class="card"><h2>Functional outcome measures</h2>';
+  if(!p.fom.length) html += '<p class="muted">No measures recorded yet.</p>';
+  else{
+    html += '<table><tr><th>Date</th>'+FOM_MEASURES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+    p.fom.forEach(function(f){
+      html += '<tr><td>'+fmtDate(f.date)+'</td>'+FOM_MEASURES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
+    });
+    html += '</table>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderSharing(p){
+  var html = '<div class="card"><h2>Sharing Settings</h2>';
+  html += '<div class="toggle-row"><div><strong>'+escapeHtml(p.localPtName)+'</strong><div class="muted">When on, flagged check-ins and concerns may be shared with your local PT.</div></div>';
+  html += '<label class="switch"><input type="checkbox" '+(p.sharingEnabled?"checked":"")+' onchange="Actions.toggleSharing()"><span class="slider"></span></label></div>';
+  html += '<p class="muted">Sharing is currently <strong>'+(p.sharingEnabled?"ON":"OFF")+'</strong>. This choice is always yours — the app will never override it.</p>';
+  html += '</div>';
+  return html;
+}
+
+/* ======================== Render: Clinician role ======================== */
+function renderClinicianRole(){
+  var html = '<main>';
+  if(State.clinicianView==="list"){
+    html += renderClinicianList();
+  } else {
+    html += renderClinicianDetail(getPatient(State.clinicianSelectedPatientId));
+  }
+  html += '</main>';
+  return html;
+}
+
+function renderClinicianList(){
+  var shared = Data.patients.filter(function(p){ return p.sharingEnabled; });
+  var html = '<div class="card"><h2>Patient List</h2><p class="muted">Only patients who have enabled sharing appear here.</p>';
+  if(!shared.length) html += '<p class="muted">No patients are currently sharing data.</p>';
+  shared.forEach(function(p){
+    var stop = Rules.stopRegressionCheck(p);
+    var gate = Rules.gateCheck(p);
+    var badges = "";
+    if(stop.triggered) badges += ' <span class="pill" style="background:#fdeceb;color:#b3241c;">STOP ALERT</span>';
+    if(gate.blocked) badges += ' <span class="pill" style="background:#fff6df;color:#9a6b00;">NOT CLEARED</span>';
+    html += '<div class="patient-card" onclick="Actions.openClinicianPatient(\''+p.id+'\')">'+
+      '<div class="name">'+escapeHtml(p.name)+badges+'</div>'+
+      '<div class="muted">'+escapeHtml(p.diagnosisSubtype)+' &middot; '+p.sessionsPerWeek+'x/week</div>'+
+    '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderClinicianDetail(p){
+  var html = '<button class="btn ghost" style="margin-bottom:12px;" onclick="Actions.backToPatientList()">← Back to patient list</button>';
+  html += '<div class="card"><h2>'+escapeHtml(p.name)+'</h2><p class="muted">'+escapeHtml(p.diagnosisSubtype)+' &middot; Local PT: '+escapeHtml(p.localPtName)+' &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p></div>';
+
+  var tabs = [["alerts","Alerts"],["program","Program"],["fom","Functional Measures"],["mmt","MMT"],["clearance","Clearance / Flare"],["pdfimport","PDF Import"]];
+  html += '<div class="tabs">'+tabs.map(function(t){
+    return '<button class="'+(State.clinicianDetailTab===t[0]?"active":"")+'" onclick="Actions.setClinicianTab(\''+t[0]+'\')">'+t[1]+'</button>';
+  }).join("")+'</div>';
+
+  if(State.clinicianDetailTab==="alerts") html += renderClinicianAlerts(p);
+  else if(State.clinicianDetailTab==="program") html += renderClinicianProgram(p);
+  else if(State.clinicianDetailTab==="fom") html += renderClinicianFom(p);
+  else if(State.clinicianDetailTab==="mmt") html += renderClinicianMmt(p);
+  else if(State.clinicianDetailTab==="clearance") html += renderClinicianClearance(p);
+  else if(State.clinicianDetailTab==="pdfimport") html += renderPdfImport(p);
+  return html;
+}
+
+function renderClinicianAlerts(p){
+  var html = '<div class="card"><h2>Rule Engine Alerts</h2>';
+
+  var gate = Rules.gateCheck(p);
+  html += gate.blocked
+    ? '<div class="alert alert-warning"><h4>Gate check: '+gate.message+'</h4>'+gate.reason+'</div>'
+    : '<div class="alert alert-success"><h4>Gate check: cleared</h4>Patient is cleared for exercise and not currently in flare.</div>';
+
+  var stop = Rules.stopRegressionCheck(p);
+  html += stop.triggered
+    ? '<div class="stop-banner">⛔ '+stop.message+'<div class="sub">3 consecutive logged days with pain or fatigue ≥5, and today’s log shows progressive symptoms with ADL impact.</div></div>'
+    : '<div class="alert alert-success"><h4>Stop/regression: not triggered</h4>No qualifying 3-day pattern detected.</div>';
+
+  var missed = Rules.missedLogCheck(p);
+  if(missed.shouldPrompt){
+    html += '<div class="alert alert-warning"><h4>Missed-log check-in pending</h4>No log in '+missed.daysSinceLastLog+' days (since '+fmtDate(missed.lastLogDate)+'). The patient will see a check-in prompt next time they open the app.</div>';
+  } else {
+    html += '<div class="alert alert-success"><h4>Logging: up to date</h4></div>';
+  }
+  var flaggedCheckins = p.checkinAlerts.filter(function(c){ return Rules.checkinConcernFlag(c); });
+  if(flaggedCheckins.length){
+    flaggedCheckins.slice().reverse().forEach(function(c){
+      html += '<div class="alert alert-danger"><h4>Flagged check-in — '+fmtDate(c.date)+'</h4>'+
+        'After-session pain/fatigue: '+c.afterSessionPain+'/'+c.afterSessionFatigue+' &middot; Current pain/fatigue: '+c.currentPain+'/'+c.currentFatigue+
+        (c.feeling?('<br>"'+escapeHtml(c.feeling)+'"'):'')+
+        (c.concernNoted?'<br><strong>Patient indicated a direct concern.</strong>':'')+'</div>';
+    });
+  }
+
+  var recovery = Rules.recoveryTimeFlags(p);
+  if(recovery.length){
+    html += '<div class="alert alert-info"><h4>Recovery-time follow-up</h4><ul class="flag-list">';
+    recovery.forEach(function(r){
+      html += '<li>Session '+fmtDate(r.sessionDate)+' ('+RECOVERY_LABELS[r.recovery]+'): 24h ('+fmtDate(r.date24)+') — '+(r.has24h?"data available":"<strong>no data at 24h</strong>")+
+        ' &middot; 48h ('+fmtDate(r.date48)+') — '+(r.has48h?"data available":"<strong>no data at 48h</strong>")+'</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  var audit = Rules.programCompositionAudit(p);
+  html += audit.length
+    ? '<div class="alert alert-warning"><h4>Program composition audit</h4>Missing categories: '+audit.join(", ")+'</div>'
+    : '<div class="alert alert-success"><h4>Program composition audit: complete</h4>All four categories (Core/Targeted/Endurance/Aerobic) are represented.</div>';
+
+  var split = Rules.sessionSplitSuggestion(p);
+  html += split.suggest
+    ? '<div class="alert alert-warning"><h4>Session-split suggestion</h4>Average RPE over last '+split.count+' completed sessions is '+split.avgRpe.toFixed(1)+' (>5). Consider splitting into upper/lower extremity days.</div>'
+    : '<div class="alert alert-success"><h4>Session-split: not suggested</h4>'+(split.avgRpe!=null?('Average RPE over last '+split.count+' sessions: '+split.avgRpe.toFixed(1)+'.'):'Not enough completed sessions yet.')+'</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function renderClinicianProgram(p){
+  var html = '<div class="card"><h2>Foundation Program</h2>';
+  p.program.forEach(function(ex){
+    html += '<div class="exercise-item"><div class="head"><strong>'+escapeHtml(ex.name)+'</strong><span class="pill pill-'+ex.category.toLowerCase()+'">'+ex.category+'</span></div>';
+    html += '<p>'+escapeHtml(ex.prescription)+' <button class="btn ghost" style="padding:3px 9px;font-size:11.5px;" onclick="Actions.editPrescription(\''+p.id+'\',\''+ex.id+'\')">Edit</button></p>';
+    if(ex.progression){
+      var st = Rules.progressionStatus(ex.progression);
+      html += '<h3>Weighted progression</h3>';
+      html += '<p>Step <strong>'+ex.progression.step+'</strong> of 4 &middot; '+ex.progression.currentReps+' reps @ '+ex.progression.currentWeight+' lb &middot; '+ex.progression.currentSets+' set(s) &middot; ceiling '+ex.progression.ceiling+' lb</p>';
+      html += '<p class="muted">'+(ex.progression.step<4
+        ? ('Advances at '+PROGRESSION_STEPS[ex.progression.step].advanceAt+' reps sustained.')
+        : 'Step 4: weight held, adds sets (max 3) as reps are sustained at 10–20.')+'</p>';
+      html += st.readyToAdvance
+        ? '<div class="alert alert-success" style="margin:6px 0;">Criteria met — ready for clinician review.</div>'
+        : '<p class="muted">Not yet at advancement threshold.</p>';
+      html += '<button class="btn secondary" onclick="Actions.confirmAdvance(\''+p.id+'\',\''+ex.id+'\')">Confirm advance…</button>';
+    }
+    html += '<div class="history-list"><strong>Change history:</strong><ul>'+ex.history.slice().reverse().map(function(h){
+      return '<li>'+fmtDate(h.date.slice(0,10))+' — '+escapeHtml(h.prescription)+'</li>';
+    }).join("")+'</ul></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderClinicianFom(p){
+  var html = '<div class="card"><h2>Enter Functional Outcome Measures</h2>';
+  html += '<form onsubmit="Actions.saveFom(event)"><div class="grid">';
+  html += '<div class="field"><label>Date</label><input type="date" name="date" value="'+todayISO()+'" required></div>';
+  FOM_MEASURES.forEach(function(m){
+    html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.1" name="'+m.key+'"></div>';
+  });
+  html += '</div><button type="submit" class="btn">Save measurement</button></form></div>';
+
+  html += '<div class="card"><h2>Trend</h2><div class="field"><label>Measure</label><select onchange="Actions.setFomMeasure(this.value)">'+
+    FOM_MEASURES.map(function(m){ return '<option value="'+m.key+'"'+(State.fomMeasure===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
+    '</select></div>';
+  var pts = p.fom.filter(function(f){ return f[State.fomMeasure]!=null; }).map(function(f){ return {date:f.date, value:f[State.fomMeasure]}; });
+  html += svgLineChart([{name:FOM_MEASURES.find(function(m){return m.key===State.fomMeasure;}).label, color:"#2563a6", points:pts}]);
+  html += '<table><tr><th>Date</th>'+FOM_MEASURES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+  p.fom.slice().reverse().forEach(function(f){
+    html += '<tr><td>'+fmtDate(f.date)+'</td>'+FOM_MEASURES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
+function renderClinicianMmt(p){
+  var html = '<div class="card"><h2>Enter Manual Muscle Test (0–5)</h2>';
+  html += '<form onsubmit="Actions.saveMmt(event)"><div class="grid">';
+  html += '<div class="field"><label>Date</label><input type="date" name="date" value="'+todayISO()+'" required></div>';
+  MUSCLES.forEach(function(m){
+    html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.5" min="0" max="5" name="'+m.key+'"></div>';
+  });
+  html += '</div><button type="submit" class="btn">Save MMT</button></form></div>';
+
+  html += '<div class="card"><h2>Trend</h2><div class="field"><label>Muscle group</label><select onchange="Actions.setMmtMuscle(this.value)">'+
+    MUSCLES.map(function(m){ return '<option value="'+m.key+'"'+(State.mmtMuscle===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
+    '</select></div>';
+  var pts = p.mmt.filter(function(f){ return f[State.mmtMuscle]!=null; }).map(function(f){ return {date:f.date, value:f[State.mmtMuscle]}; });
+  html += svgLineChart([{name:MUSCLES.find(function(m){return m.key===State.mmtMuscle;}).label, color:"#7a2ea6", points:pts}], {yMin:0,yMax:5});
+  html += '<table><tr><th>Date</th>'+MUSCLES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+  p.mmt.slice().reverse().forEach(function(f){
+    html += '<tr><td>'+fmtDate(f.date)+'</td>'+MUSCLES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
+function renderClinicianClearance(p){
+  var html = '<div class="card"><h2>Physician Clearance / Flare Status</h2>';
+  html += '<div class="toggle-row"><div><strong>Cleared for exercise</strong><div class="muted">Gate check blocks the program when off.</div></div>'+
+    '<label class="switch"><input type="checkbox" '+(p.clearedForExercise?"checked":"")+' onchange="Actions.toggleClearance(\''+p.id+'\')"><span class="slider"></span></label></div>';
+  html += '<div class="toggle-row"><div><strong>Currently in flare</strong><div class="muted">Gate check blocks the program when on.</div></div>'+
+    '<label class="switch"><input type="checkbox" '+(p.inFlare?"checked":"")+' onchange="Actions.toggleFlare(\''+p.id+'\')"><span class="slider"></span></label></div>';
+  html += '</div>';
+  return html;
+}
+
+function renderPdfImport(p){
+  var html = '<div class="card"><h2>Import MedBridge HEP (PDF)</h2>';
+  html += '<p class="muted">Uploads are parsed client-side only. Parsing is heuristic — always review before confirming; nothing is applied to the program automatically.</p>';
+  html += '<input type="file" accept="application/pdf" onchange="Actions.pdfFileChosen(this)">';
+  if(State.pdfError) html += '<div class="alert alert-warning" style="margin-top:10px;">'+escapeHtml(State.pdfError)+'</div>';
+  html += '</div>';
+
+  if(State.pdfReview){
+    html += '<div class="card"><h2>Review parsed exercises</h2>';
+    if(!State.pdfReview.length) html += '<p class="muted">No exercise-like lines were detected in this PDF.</p>';
+    State.pdfReview.forEach(function(item, idx){
+      html += '<div class="review-item"><label><input type="checkbox" '+(item.include?"checked":"")+' onchange="Actions.togglePdfInclude('+idx+')"> Include</label>';
+      html += '<label class="muted">Name<input type="text" value="'+escapeHtml(item.name)+'" oninput="Actions.updatePdfReviewField('+idx+',\'name\',this.value)"></label>';
+      html += '<label class="muted">Prescription<input type="text" value="'+escapeHtml(item.prescription)+'" oninput="Actions.updatePdfReviewField('+idx+',\'prescription\',this.value)"></label>';
+      html += '<label class="muted">Category<select onchange="Actions.updatePdfReviewField('+idx+',\'category\',this.value)">'+
+        CATEGORIES.map(function(c){ return '<option value="'+c+'"'+(item.category===c?" selected":"")+'>'+c+'</option>'; }).join("")+'</select></label>';
+      html += '</div>';
+    });
+    html += '<div class="row" style="justify-content:flex-end;">';
+    html += '<button class="btn ghost" onclick="Actions.cancelPdfReview()">Cancel</button>';
+    html += '<button class="btn" onclick="Actions.confirmPdfImport()">Confirm & add to program</button>';
+    html += '</div></div>';
+  }
+  return html;
+}
+
+/* ======================== Init ======================== */
+window.Actions = Actions;
+render();
+
+})();
+</script>
+</body>
+</html>
