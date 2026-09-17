@@ -89,6 +89,9 @@
   .legend{display:flex;gap:14px;font-size:11.5px;margin-top:4px;flex-wrap:wrap;}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .legend i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .ibmfrs-item{border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;}
+  .ibmfrs-item .item-label{font-size:11px;color:var(--muted);margin-bottom:4px;min-height:26px;}
+  .ibmfrs-item .item-delta{font-size:12px;font-weight:700;margin-top:2px;}
   footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
 </style>
 </head>
@@ -111,19 +114,55 @@ var RECOVERY_LABELS = {
   under30:"Recovered < 30 min", between30and60:"Recovered 30–60 min",
   over60:"Recovered > 60 min", notRecovered:"Not recovered"
 };
+var IBM_DIAGNOSIS = "Inclusion Body Myositis (IBM)";
 var DIAGNOSIS_OPTIONS = [
-  "Polymyositis (PM)", "Dermatomyositis (DM)", "Necrotizing myopathy (NM)", "Anti-synthetase syndrome"
-]; // diagnosisSubtype is a free field for future routing; Inclusion Body Myositis (IBM) is explicitly out of scope
+  "Polymyositis (PM)", "Dermatomyositis (DM)", "Necrotizing myopathy (NM)", "Anti-synthetase syndrome", IBM_DIAGNOSIS
+]; // diagnosisSubtype routes IBM patients to the IBMFRS below; no other IBM-specific clinical logic is implemented
+function isIbmPatient(patient){ return patient.diagnosisSubtype === IBM_DIAGNOSIS; }
+
 var MUSCLES = [
   {key:"hipFlexors", label:"Hip flexors"}, {key:"kneeExtensors", label:"Knee extensors"},
   {key:"shoulderAbductors", label:"Shoulder abductors"}, {key:"ankleDorsiflexors", label:"Ankle dorsiflexors"}
 ];
-var FOM_MEASURES = [
+// Measures shared by every patient regardless of diagnosis subtype.
+var FOM_COMMON_MEASURES = [
   {key:"gaitSpeed", label:"Gait speed (m/s)"}, {key:"tug", label:"TUG (s)"},
   {key:"sts30", label:"30s-STS (reps)"}, {key:"sts5x", label:"5x-STS (s)"},
-  {key:"mwt2", label:"2MWT (m)"}, {key:"mwt6", label:"6MWT (m)"},
+  {key:"mwt2", label:"2MWT (m)"}, {key:"mwt6", label:"6MWT (m)"}
+];
+// FI-2/FI-3 are used for the non-IBM subtypes; IBM patients use the IBMFRS instead (see below).
+// The two scales are never shown together for the same patient.
+var FOM_NON_IBM_MEASURES = [
   {key:"fi2", label:"FI-2 (score)"}, {key:"fi3", label:"FI-3 (score)"}
 ];
+// IBMFRS (Inclusion Body Myositis Functional Rating Scale) is a validated, IBM-specific 10-item scale,
+// each item scored 0 (unable to perform) to 4 (normal); total range 0-40, HIGHER = BETTER (opposite of most
+// symptom scales in this app). A drop of >=2 points on the total between visits is the published threshold
+// for a clinically meaningful decline (see Rules.ibmfrsDeclineFlag below).
+//
+// IMPORTANT: the labels/descriptions below are generic placeholders grouped by the domains the real scale
+// covers (swallowing, upper-limb tasks, self-care, bed mobility, lower-limb function) — they are NOT the
+// validated item wording. Before this goes into actual clinical use, replace these placeholders with the
+// exact item text from the real instrument, available at understandingmyositis.org. A validated scale's
+// scoring properties depend on using its exact wording, not a paraphrase.
+var IBMFRS_ITEMS = [
+  {key:"item1", label:"Item 1", placeholder:"Swallowing"},
+  {key:"item2", label:"Item 2", placeholder:"Handwriting"},
+  {key:"item3", label:"Item 3", placeholder:"Cutting food"},
+  {key:"item4", label:"Item 4", placeholder:"Handling utensils"},
+  {key:"item5", label:"Item 5", placeholder:"Dressing"},
+  {key:"item6", label:"Item 6", placeholder:"Hygiene"},
+  {key:"item7", label:"Item 7", placeholder:"Bed mobility"},
+  {key:"item8", label:"Item 8", placeholder:"Sit-to-stand"},
+  {key:"item9", label:"Item 9", placeholder:"Walking"},
+  {key:"item10", label:"Item 10", placeholder:"Stair climbing"}
+];
+function ibmfrsTotal(items){ return items.reduce(function(a,b){ return a + (Number(b)||0); }, 0); }
+function fomMeasuresFor(patient){
+  return isIbmPatient(patient)
+    ? FOM_COMMON_MEASURES.concat([{key:"ibmfrsTotal", label:"IBMFRS Total (0–40, higher = better)"}])
+    : FOM_COMMON_MEASURES.concat(FOM_NON_IBM_MEASURES);
+}
 var PROGRESSION_STEPS = {
   1:{startReps:20, advanceAt:30}, 2:{startReps:15, advanceAt:25}, 3:{startReps:10, advanceAt:20}, 4:{repsRange:[10,20]}
 };
@@ -174,17 +213,25 @@ function buildSeedData(){
     var dow = parseISO(date).getDay(); // 1,3,5 = Mon/Wed/Fri session days
     if(dow===1||dow===3||dow===5){
       aLogs.push({date:date, logged:true, completed:true, rpe: 3+(i%3===0?1:0), pain: 1+(i%4===0?1:0),
-        fatigue: 2+(i%5===0?1:0), recovery: (i===9?"over60":"under30"), progressive:false, adlImpact:false,
-        note: i===9?"More tired than usual after session, resolved by next day.":""});
+        fatigue: 2+(i%5===0?1:0), recovery:"under30", progressive:false, adlImpact:false, note:""});
     } else if(dow===2||dow===4){
       // rest day, still captures pain/fatigue even though not completed
       aLogs.push({date:date, logged:true, completed:false, rpe:null, pain:1, fatigue:2, recovery:null,
         progressive:null, adlImpact:null, note:""});
     }
   }
+  // Pick whichever completed session lands closest to ~9 days ago and mark it as a slow-recovery
+  // session; this is resolved from the actual generated logs (not a fixed day offset) so it stays
+  // correct no matter what day of the week "today" is when the demo data is first seeded.
+  var completedALogs = aLogs.filter(function(l){ return l.completed; });
+  var over60Target = addDaysISO(today,-9);
+  var over60Log = completedALogs.reduce(function(best,l){
+    return (!best || Math.abs(daysBetween(l.date,over60Target))<Math.abs(daysBetween(best.date,over60Target))) ? l : best;
+  }, null);
+  over60Log.recovery = "over60";
+  over60Log.note = "More tired than usual after session, resolved by next day.";
   // ensure the day after the over60 recovery session has a follow-up log (24h present), 48h missing
-  var over60Date = aLogs.find(function(l){return l.recovery==="over60";}).date;
-  var next1 = addDaysISO(over60Date,1);
+  var next1 = addDaysISO(over60Log.date,1);
   if(!aLogs.some(function(l){return l.date===next1;})){
     aLogs.push({date:next1, logged:true, completed:false, rpe:null, pain:2, fatigue:2, recovery:null, progressive:null, adlImpact:null, note:"Felt fine."});
   }
@@ -285,7 +332,49 @@ function buildSeedData(){
     checkinAlerts:[], lastMissedLogPromptHandledDate:null
   };
 
-  return {patients:[patientA, patientB, patientC]};
+  // ---- Patient D: IBM case, demonstrates itemized IBMFRS entry + per-item decline ----
+  var dLogs = [];
+  for(var m=10;m>=1;m--){
+    var dd = addDaysISO(today,-m);
+    var ddow = parseISO(dd).getDay();
+    if(ddow===2||ddow===5){
+      dLogs.push({date:dd, logged:true, completed:true, rpe:3, pain:2, fatigue:3, recovery:"under30", progressive:false, adlImpact:false, note:""});
+    }
+  }
+
+  var patientD = {
+    id:"p4", name:"Priya Nair", diagnosisSubtype:IBM_DIAGNOSIS, sessionsPerWeek:2,
+    targetRPE:{min:2,max:4}, clearedForExercise:true, inFlare:false, sharingEnabled:true, localPtName:"Dana Kim, PT",
+    program:[
+      {id:uid("ex"), name:"Modified Plank", category:"Core", prescription:"2 sets x 15 seconds hold",
+        progression:null, history:[{date:addDaysISO(today,-70), prescription:"2 sets x 15 seconds hold", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Sit-to-Stand", category:"Targeted", prescription:"2 sets x 8 reps, hands on chair arms as needed",
+        progression:null, history:[{date:addDaysISO(today,-70), prescription:"2 sets x 8 reps, hands on chair arms as needed", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Seated Marching", category:"Endurance", prescription:"2 sets x 45 seconds, moderate pace",
+        progression:null, history:[{date:addDaysISO(today,-70), prescription:"2 sets x 45 seconds, moderate pace", changedBy:"clinician"}]},
+      {id:uid("ex"), name:"Stationary Cycling", category:"Aerobic", prescription:"8 minutes, low resistance, RPE 2-4",
+        progression:null, history:[{date:addDaysISO(today,-70), prescription:"8 minutes, low resistance, RPE 2-4", changedBy:"clinician"}]}
+    ],
+    dailyLogs:dLogs,
+    // Three itemized IBMFRS entries: swallowing/upper-limb items stay flat while lower-limb items
+    // (sit-to-stand, walking, stair climbing) decline meaningfully across visits — a classic IBM
+    // quad-dominant pattern that a single total score would hide. Totals: 33 -> 28 -> 25 (both drops >= 2).
+    fom:[
+      {date:addDaysISO(today,-90), gaitSpeed:0.55, tug:17.5, sts30:3, sts5x:24.0, mwt2:80, mwt6:210,
+        ibmfrsItems:[4,4,4,4,3,3,3,3,3,2], ibmfrsTotal:ibmfrsTotal([4,4,4,4,3,3,3,3,3,2])},
+      {date:addDaysISO(today,-45), gaitSpeed:0.50, tug:19.0, sts30:2, sts5x:27.5, mwt2:70, mwt6:190,
+        ibmfrsItems:[4,4,4,3,3,3,2,2,2,1], ibmfrsTotal:ibmfrsTotal([4,4,4,3,3,3,2,2,2,1])},
+      {date:addDaysISO(today,-7), gaitSpeed:0.45, tug:21.0, sts30:2, sts5x:30.0, mwt2:60, mwt6:170,
+        ibmfrsItems:[4,4,3,3,3,3,2,1,1,1], ibmfrsTotal:ibmfrsTotal([4,4,3,3,3,3,2,1,1,1])}
+    ],
+    mmt:[
+      {date:addDaysISO(today,-90), hipFlexors:3, kneeExtensors:2, shoulderAbductors:4, ankleDorsiflexors:4},
+      {date:addDaysISO(today,-7), hipFlexors:2.5, kneeExtensors:1.5, shoulderAbductors:4, ankleDorsiflexors:3.5}
+    ],
+    checkinAlerts:[], lastMissedLogPromptHandledDate:null
+  };
+
+  return {patients:[patientA, patientB, patientC, patientD]};
 }
 
 /* ======================== Storage ======================== */
@@ -418,6 +507,24 @@ Rules.sessionSplitSuggestion = function(patient){
   return {suggest: mean>5, avgRpe:mean, count:recent.length};
 };
 
+// IBM-specific: IBMFRS meaningful-decline flag. Higher IBMFRS totals are better, so a decline is a
+// negative delta; the published threshold is a drop of >=2 points on the total between the two most
+// recent itemized entries. Informational only, like every other alert in this app — never an
+// automatic action.
+Rules.ibmfrsDeclineFlag = function(patient){
+  var entries = patient.fom.filter(function(f){ return Array.isArray(f.ibmfrsItems); })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  if(entries.length<2) return {triggered:false, hasData:entries.length>0};
+  var prev = entries[entries.length-2], curr = entries[entries.length-1];
+  var delta = curr.ibmfrsTotal - prev.ibmfrsTotal;
+  var result = {triggered:false, hasData:true, delta:delta, previousTotal:prev.ibmfrsTotal, currentTotal:curr.ibmfrsTotal, previousDate:prev.date, currentDate:curr.date};
+  if(delta<=-2){
+    result.triggered = true;
+    result.message = "IBMFRS dropped by "+(-delta)+" points since last visit — exceeds the published meaningful-decline threshold.";
+  }
+  return result;
+};
+
 window.Rules = Rules; // exposed for manual/console testing
 
 /* ======================== Charts (inline SVG, no external library) ======================== */
@@ -458,6 +565,23 @@ function svgLineChart(series, opts){
     return '<span><i style="background:'+s.color+'"></i>'+escapeHtml(s.name)+'</span>';
   }).join("")+'</div>';
   return '<div class="chart-wrap">'+svg+legend+'</div>';
+}
+
+// Compact axis-free line, used for the IBMFRS per-item small multiples.
+function svgSparkline(points, opts){
+  opts = opts||{};
+  var w = opts.width||120, h = opts.height||34, color = opts.color||"#2563a6";
+  var yMin = opts.yMin!=null?opts.yMin:0, yMax = opts.yMax!=null?opts.yMax:4;
+  if(!points.length) return '<div class="muted" style="font-size:11px;">No data</div>';
+  var pts = points.slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  var minDate = pts[0].date, maxDate = pts[pts.length-1].date, span = daysBetween(minDate,maxDate)||1;
+  function x(d){ return 4 + (daysBetween(minDate,d)/span) * (w-8); }
+  function y(v){ return h-4 - ((v-yMin)/((yMax-yMin)||1)) * (h-8); }
+  var path = pts.map(function(p,i){ return (i===0?"M":"L")+x(p.date).toFixed(1)+","+y(p.value).toFixed(1); }).join(" ");
+  var circles = pts.map(function(p){
+    return '<circle cx="'+x(p.date).toFixed(1)+'" cy="'+y(p.value).toFixed(1)+'" r="2.2" fill="'+color+'"><title>'+fmtDate(p.date)+': '+p.value+'</title></circle>';
+  }).join("");
+  return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="1.6"/>'+circles+'</svg>';
 }
 
 /* ======================== App State ======================== */
@@ -612,10 +736,26 @@ Actions.saveFom = function(ev){
   var f = ev.target;
   var p = getPatient(State.clinicianSelectedPatientId);
   var entry = {date: f.date.value};
-  FOM_MEASURES.forEach(function(m){ entry[m.key] = f[m.key].value===""?null:Number(f[m.key].value); });
+  FOM_COMMON_MEASURES.forEach(function(m){ entry[m.key] = f[m.key].value===""?null:Number(f[m.key].value); });
+  if(isIbmPatient(p)){
+    var items = IBMFRS_ITEMS.map(function(it){ return Number(f[it.key].value)||0; });
+    entry.ibmfrsItems = items;
+    entry.ibmfrsTotal = ibmfrsTotal(items);
+  } else {
+    FOM_NON_IBM_MEASURES.forEach(function(m){ entry[m.key] = f[m.key].value===""?null:Number(f[m.key].value); });
+  }
   p.fom.push(entry);
   p.fom.sort(function(a,b){ return a.date<b.date?-1:1; });
   saveData(); render();
+};
+// Recomputes the running IBMFRS total as items are picked, without a full render() —
+// re-rendering here would reset any other in-progress fields on the same form (see the
+// check-in-form fix earlier in this file for why that matters).
+Actions.recalcIbmfrsTotal = function(formEl){
+  var total = 0;
+  IBMFRS_ITEMS.forEach(function(it){ total += Number(formEl[it.key].value)||0; });
+  var out = formEl.querySelector("#ibmfrsRunningTotal");
+  if(out) out.textContent = total;
 };
 Actions.saveMmt = function(ev){
   ev.preventDefault();
@@ -909,9 +1049,10 @@ function renderPatientTrends(p){
   html += '<div class="card"><h2>Functional outcome measures</h2>';
   if(!p.fom.length) html += '<p class="muted">No measures recorded yet.</p>';
   else{
-    html += '<table><tr><th>Date</th>'+FOM_MEASURES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+    var patientMeasures = fomMeasuresFor(p);
+    html += '<table><tr><th>Date</th>'+patientMeasures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
     p.fom.forEach(function(f){
-      html += '<tr><td>'+fmtDate(f.date)+'</td>'+FOM_MEASURES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
+      html += '<tr><td>'+fmtDate(f.date)+'</td>'+patientMeasures.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
     });
     html += '</table>';
   }
@@ -1026,6 +1167,17 @@ function renderClinicianAlerts(p){
     ? '<div class="alert alert-warning"><h4>Session-split suggestion</h4>Average RPE over last '+split.count+' completed sessions is '+split.avgRpe.toFixed(1)+' (>5). Consider splitting into upper/lower extremity days.</div>'
     : '<div class="alert alert-success"><h4>Session-split: not suggested</h4>'+(split.avgRpe!=null?('Average RPE over last '+split.count+' sessions: '+split.avgRpe.toFixed(1)+'.'):'Not enough completed sessions yet.')+'</div>';
 
+  if(isIbmPatient(p)){
+    var ibmDecline = Rules.ibmfrsDeclineFlag(p);
+    if(ibmDecline.triggered){
+      html += '<div class="alert alert-danger"><h4>IBMFRS meaningful decline</h4>'+ibmDecline.message+' (Total: '+ibmDecline.previousTotal+' on '+fmtDate(ibmDecline.previousDate)+' → '+ibmDecline.currentTotal+' on '+fmtDate(ibmDecline.currentDate)+'). See the Functional Measures tab for the per-item breakdown.</div>';
+    } else if(ibmDecline.hasData){
+      html += '<div class="alert alert-success"><h4>IBMFRS: no meaningful decline</h4>Latest total change since previous visit: '+(ibmDecline.delta>0?"+":"")+ibmDecline.delta+' points (higher is better).</div>';
+    } else {
+      html += '<div class="alert alert-info"><h4>IBMFRS: not enough data yet</h4>Needs at least two itemized entries to check for a meaningful decline.</div>';
+    }
+  }
+
   html += '</div>';
   return html;
 }
@@ -1057,24 +1209,84 @@ function renderClinicianProgram(p){
 }
 
 function renderClinicianFom(p){
+  var isIbm = isIbmPatient(p);
+  var measures = fomMeasuresFor(p);
+
   var html = '<div class="card"><h2>Enter Functional Outcome Measures</h2>';
+  if(isIbm) html += '<p class="muted">This patient’s diagnosis subtype is IBM, so the itemized IBMFRS is used here instead of FI-2/FI-3.</p>';
   html += '<form onsubmit="Actions.saveFom(event)"><div class="grid">';
   html += '<div class="field"><label>Date</label><input type="date" name="date" value="'+todayISO()+'" required></div>';
-  FOM_MEASURES.forEach(function(m){
+  FOM_COMMON_MEASURES.forEach(function(m){
     html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.1" name="'+m.key+'"></div>';
   });
-  html += '</div><button type="submit" class="btn">Save measurement</button></form></div>';
+  html += '</div>';
+  if(isIbm){
+    html += '<h3>IBMFRS items (0 = unable to perform, 4 = normal)</h3>';
+    html += '<p class="muted">Placeholder item labels — see code comment on IBMFRS_ITEMS for why exact validated wording still needs to be sourced.</p>';
+    html += '<div class="grid">';
+    IBMFRS_ITEMS.forEach(function(it){
+      html += '<div class="field"><label>'+it.label+': '+it.placeholder+'</label>'+
+        '<select name="'+it.key+'" onchange="Actions.recalcIbmfrsTotal(this.form)">'+
+        [0,1,2,3,4].map(function(v){ return '<option value="'+v+'">'+v+'</option>'; }).join("")+
+        '</select></div>';
+    });
+    html += '</div>';
+    html += '<p>Running total: <strong id="ibmfrsRunningTotal">0</strong> / 40</p>';
+  } else {
+    html += '<div class="grid">';
+    FOM_NON_IBM_MEASURES.forEach(function(m){
+      html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.1" name="'+m.key+'"></div>';
+    });
+    html += '</div>';
+  }
+  html += '<button type="submit" class="btn">Save measurement</button></form></div>';
 
+  if(isIbm){
+    var decline = Rules.ibmfrsDeclineFlag(p);
+    if(decline.triggered){
+      html += '<div class="alert alert-danger"><h4>IBMFRS meaningful decline</h4>'+decline.message+' (Total: '+decline.previousTotal+' on '+fmtDate(decline.previousDate)+' → '+decline.currentTotal+' on '+fmtDate(decline.currentDate)+')</div>';
+    } else if(decline.hasData && decline.delta!=null){
+      html += '<div class="alert '+(decline.delta>0?"alert-success":"alert-info")+'"><h4>IBMFRS since last visit</h4>'+
+        'Total '+decline.previousTotal+' → '+decline.currentTotal+' ('+(decline.delta>0?"+":"")+decline.delta+' points; higher is better).</div>';
+    }
+  }
+
+  var activeMeasure = measures.some(function(m){return m.key===State.fomMeasure;}) ? State.fomMeasure : measures[0].key;
+  var measureDef = measures.find(function(m){ return m.key===activeMeasure; });
   html += '<div class="card"><h2>Trend</h2><div class="field"><label>Measure</label><select onchange="Actions.setFomMeasure(this.value)">'+
-    FOM_MEASURES.map(function(m){ return '<option value="'+m.key+'"'+(State.fomMeasure===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
+    measures.map(function(m){ return '<option value="'+m.key+'"'+(activeMeasure===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
     '</select></div>';
-  var pts = p.fom.filter(function(f){ return f[State.fomMeasure]!=null; }).map(function(f){ return {date:f.date, value:f[State.fomMeasure]}; });
-  html += svgLineChart([{name:FOM_MEASURES.find(function(m){return m.key===State.fomMeasure;}).label, color:"#2563a6", points:pts}]);
-  html += '<table><tr><th>Date</th>'+FOM_MEASURES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+  var pts = p.fom.filter(function(f){ return f[activeMeasure]!=null; }).map(function(f){ return {date:f.date, value:f[activeMeasure]}; });
+  var chartOpts = activeMeasure==="ibmfrsTotal" ? {yMin:0, yMax:40} : {};
+  html += svgLineChart([{name:measureDef.label, color:"#2563a6", points:pts}], chartOpts);
+  html += '<table><tr><th>Date</th>'+measures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
   p.fom.slice().reverse().forEach(function(f){
-    html += '<tr><td>'+fmtDate(f.date)+'</td>'+FOM_MEASURES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
+    html += '<tr><td>'+fmtDate(f.date)+'</td>'+measures.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
   });
   html += '</table></div>';
+
+  if(isIbm) html += renderIbmfrsItemBreakdown(p);
+  return html;
+}
+
+// Itemized view: one tiny sparkline per IBMFRS item, so a decline concentrated in a few items
+// (e.g. lower-limb tasks) is visible even when it wouldn't stand out in the total-score trend.
+function renderIbmfrsItemBreakdown(p){
+  var entries = p.fom.filter(function(f){ return Array.isArray(f.ibmfrsItems); })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  var html = '<div class="card"><h2>IBMFRS per-item trend</h2>';
+  if(entries.length<1){ html += '<p class="muted">No itemized IBMFRS entries recorded yet.</p></div>'; return html; }
+  html += '<p class="muted">0–4 per item, higher is better. Each tile shows first → latest recorded score.</p>';
+  html += '<div class="grid">';
+  IBMFRS_ITEMS.forEach(function(item, idx){
+    var pts = entries.map(function(e){ return {date:e.date, value:e.ibmfrsItems[idx]}; });
+    var first = pts[0].value, last = pts[pts.length-1].value;
+    var deltaColor = last>first ? "var(--success)" : (last<first ? "var(--danger)" : "var(--muted)");
+    html += '<div class="ibmfrs-item"><div class="item-label">'+item.label+': '+item.placeholder+'</div>'+
+      svgSparkline(pts, {yMin:0, yMax:4})+
+      '<div class="item-delta" style="color:'+deltaColor+'">'+first+' → '+last+'</div></div>';
+  });
+  html += '</div></div>';
   return html;
 }
 
