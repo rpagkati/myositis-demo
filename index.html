@@ -109,6 +109,13 @@
 
 /* ======================== Constants ======================== */
 var STORAGE_KEY = "myositisCompanionData_v1";
+// Set this to a deployed instance of /server (e.g. "https://your-backend.example.com")
+// to enable real magic-link PT sharing: secure tokens, email delivery, revocation, and
+// an audit trail, all server-side. GitHub Pages cannot run that server itself, so this
+// stays a separate deployment; leave this blank to keep Sharing Settings in a local-only
+// demo mode (toggle only, no email, no revocable link — the old placeholder behavior).
+var SHARING_API_BASE = "";
+function sharingApiUrl(path){ return SHARING_API_BASE.replace(/\/$/,"") + path; }
 var CATEGORIES = ["Core","Targeted","Endurance","Aerobic"];
 var RECOVERY_LABELS = {
   under30:"Recovered < 30 min", between30and60:"Recovered 30–60 min",
@@ -193,6 +200,9 @@ function parseISO(s){ var p=s.split("-").map(Number); return new Date(p[0], p[1]
 function addDaysISO(s, n){ var d=parseISO(s); d.setDate(d.getDate()+n); return toISO(d); }
 function daysBetween(s1, s2){ return Math.round((parseISO(s2)-parseISO(s1))/86400000); }
 function fmtDate(s){ if(!s) return ""; var d=parseISO(s); return d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
+// For full ISO datetimes coming back from the sharing backend (createdAt/expiresAt/lastAccessedAt),
+// as opposed to the plain YYYY-MM-DD strings used everywhere else in this app.
+function fmtDateTime(iso){ if(!iso) return ""; var d=new Date(iso); return d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})+" "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
 function uid(prefix){ return prefix+"_"+Math.random().toString(36).slice(2,9); }
 function escapeHtml(s){
   return String(s==null?"":s).replace(/[&<>"']/g, function(c){
@@ -596,6 +606,9 @@ var State = {
   fomMeasure:"gaitSpeed",
   mmtMuscle:"hipFlexors",
   checkinDraft:null,
+  sharingStatusByPatient:{}, // patientId -> last-fetched {sharingEnabled, link} from the backend
+  sharingBusy:false,
+  sharingError:null,
   pdfReview:null,
   pdfError:null
 };
@@ -606,8 +619,14 @@ function el(id){ return document.getElementById(id); }
 var Actions = {};
 
 Actions.setRole = function(role){ State.role=role; render(); };
-Actions.setPatientId = function(id){ State.patientId=id; render(); };
-Actions.setPatientView = function(v){ State.patientView=v; render(); };
+Actions.setPatientId = function(id){
+  State.patientId=id; render();
+  if(State.patientView==="sharing" && SHARING_API_BASE) Actions.loadSharingStatus(id);
+};
+Actions.setPatientView = function(v){
+  State.patientView=v; render();
+  if(v==="sharing" && SHARING_API_BASE) Actions.loadSharingStatus(State.patientId);
+};
 Actions.openClinicianPatient = function(id){ State.clinicianSelectedPatientId=id; State.clinicianView="detail"; State.clinicianDetailTab="alerts"; render(); };
 Actions.backToPatientList = function(){ State.clinicianView="list"; State.clinicianSelectedPatientId=null; render(); };
 Actions.setClinicianTab = function(t){ State.clinicianDetailTab=t; render(); };
@@ -617,10 +636,119 @@ Actions.setLibraryFilter = function(field, val){ State.libraryFilter[field]=val;
 Actions.setFomMeasure = function(v){ State.fomMeasure=v; render(); };
 Actions.setMmtMuscle = function(v){ State.mmtMuscle=v; render(); };
 
+// Legacy local-only toggle, used only when SHARING_API_BASE is blank (no backend
+// configured). No email, no revocable link, no audit trail — see renderSharing().
 Actions.toggleSharing = function(){
   var p = getPatient(State.patientId);
   p.sharingEnabled = !p.sharingEnabled;
   saveData(); render();
+};
+
+// ---- Backend-backed sharing (magic-link PT access) ----
+Actions.loadSharingStatus = function(patientId){
+  fetch(sharingApiUrl("/api/patients/"+patientId+"/sharing/status"))
+    .then(function(res){ if(!res.ok) throw new Error("status "+res.status); return res.json(); })
+    .then(function(data){
+      State.sharingStatusByPatient[patientId] = data;
+      State.sharingError = null;
+      render();
+    })
+    .catch(function(err){
+      State.sharingError = "Couldn't reach the sharing backend ("+err.message+").";
+      render();
+    });
+};
+
+Actions.enableSharing = function(ev){
+  ev.preventDefault();
+  var f = ev.target;
+  var patientId = State.patientId;
+  var ptName = f.ptName.value.trim(), ptEmail = f.ptEmail.value.trim();
+  if(!ptName || !ptEmail) return;
+  State.sharingBusy = true; State.sharingError = null; render();
+  fetch(sharingApiUrl("/api/patients/"+patientId+"/sharing/enable"), {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ptName:ptName, ptEmail:ptEmail})
+  })
+    .then(function(res){ return res.json().then(function(data){ return {ok:res.ok, status:res.status, data:data}; }); })
+    .then(function(result){
+      State.sharingBusy = false;
+      if(!result.ok){
+        State.sharingError = result.status===429
+          ? "Too many sharing emails sent recently. Try again in about "+Math.ceil(result.data.retryAfterSeconds/60)+" minute(s)."
+          : (result.data.error || "Couldn't turn on sharing.");
+        render(); return;
+      }
+      State.sharingStatusByPatient[patientId] = {sharingEnabled:result.data.sharingEnabled, link:result.data.link};
+      var p = getPatient(patientId); p.sharingEnabled = true; saveData();
+      render();
+    })
+    .catch(function(err){
+      State.sharingBusy = false;
+      State.sharingError = "Couldn't reach the sharing backend ("+err.message+").";
+      render();
+    });
+};
+
+Actions.disableSharing = function(){
+  var patientId = State.patientId;
+  State.sharingBusy = true; State.sharingError = null; render();
+  fetch(sharingApiUrl("/api/patients/"+patientId+"/sharing/disable"), {method:"POST"})
+    .then(function(res){ if(!res.ok) throw new Error("status "+res.status); return res.json(); })
+    .then(function(data){
+      State.sharingBusy = false;
+      State.sharingStatusByPatient[patientId] = {sharingEnabled:data.sharingEnabled, link:null};
+      var p = getPatient(patientId); p.sharingEnabled = false; saveData();
+      render();
+    })
+    .catch(function(err){
+      State.sharingBusy = false;
+      State.sharingError = "Couldn't reach the sharing backend ("+err.message+").";
+      render();
+    });
+};
+
+Actions.revokeSharing = function(){
+  if(!confirm("Revoke this share link right away? Your PT will immediately lose access, even though sharing stays turned on so you can send a new link.")) return;
+  var patientId = State.patientId;
+  State.sharingBusy = true; State.sharingError = null; render();
+  fetch(sharingApiUrl("/api/patients/"+patientId+"/sharing/revoke"), {method:"POST"})
+    .then(function(res){ if(!res.ok) throw new Error("status "+res.status); return res.json(); })
+    .then(function(data){
+      State.sharingBusy = false;
+      var prev = State.sharingStatusByPatient[patientId] || {};
+      State.sharingStatusByPatient[patientId] = {sharingEnabled:prev.sharingEnabled, link:data.link};
+      render();
+    })
+    .catch(function(err){
+      State.sharingBusy = false;
+      State.sharingError = "Couldn't reach the sharing backend ("+err.message+").";
+      render();
+    });
+};
+
+Actions.resendSharingLink = function(){
+  var patientId = State.patientId;
+  State.sharingBusy = true; State.sharingError = null; render();
+  fetch(sharingApiUrl("/api/patients/"+patientId+"/sharing/resend"), {method:"POST"})
+    .then(function(res){ return res.json().then(function(data){ return {ok:res.ok, status:res.status, data:data}; }); })
+    .then(function(result){
+      State.sharingBusy = false;
+      if(!result.ok){
+        State.sharingError = result.status===429
+          ? "Too many sharing emails sent recently. Try again in about "+Math.ceil(result.data.retryAfterSeconds/60)+" minute(s)."
+          : (result.data.error || "Couldn't resend the link.");
+        render(); return;
+      }
+      var prev = State.sharingStatusByPatient[patientId] || {};
+      State.sharingStatusByPatient[patientId] = {sharingEnabled:prev.sharingEnabled, link:result.data.link};
+      render();
+    })
+    .catch(function(err){
+      State.sharingBusy = false;
+      State.sharingError = "Couldn't reach the sharing backend ("+err.message+").";
+      render();
+    });
 };
 
 Actions.toggleClearance = function(patientId){
@@ -1061,7 +1189,60 @@ function renderPatientTrends(p){
 }
 
 function renderSharing(p){
+  if(!SHARING_API_BASE) return renderSharingLocalOnly(p);
+
   var html = '<div class="card"><h2>Sharing Settings</h2>';
+  html += '<p class="muted">This choice is always yours — the app will never override it.</p>';
+  if(State.sharingError) html += '<div class="alert alert-warning">'+escapeHtml(State.sharingError)+'</div>';
+
+  var status = State.sharingStatusByPatient[p.id];
+  if(!status){
+    html += '<p class="muted">Loading sharing status…</p></div>';
+    return html;
+  }
+
+  var link = status.link;
+  var linkStatus = link ? link.status : "none";
+
+  if(status.sharingEnabled && link && linkStatus!=="none"){
+    var statusPill = {active:"alert-success", expired:"alert-warning", revoked:"alert-danger", none:"alert-info"}[linkStatus] || "alert-info";
+    html += '<div class="toggle-row"><div><strong>'+escapeHtml(link.ptName)+'</strong><div class="muted">'+escapeHtml(link.ptEmail)+'</div></div>'+
+      '<label class="switch"><input type="checkbox" checked '+(State.sharingBusy?"disabled":"")+' onchange="Actions.disableSharing()"><span class="slider"></span></label></div>';
+
+    html += '<div class="alert '+statusPill+'"><h4>Link status: '+linkStatus.charAt(0).toUpperCase()+linkStatus.slice(1)+'</h4>';
+    html += 'Sent '+fmtDateTime(link.createdAt)+' &middot; expires '+fmtDateTime(link.expiresAt)+'<br>';
+    html += link.lastAccessedAt
+      ? 'Last viewed by your PT: '+fmtDateTime(link.lastAccessedAt)+' ('+link.accessCount+' view'+(link.accessCount===1?"":"s")+' total)'
+      : 'Not yet viewed by your PT.';
+    html += '</div>';
+
+    if(linkStatus==="active" && link.url){
+      html += '<div class="field"><label>Share link</label><input type="text" readonly value="'+escapeHtml(link.url)+'" onclick="this.select()"></div>';
+    }
+
+    html += '<div class="row">';
+    if(linkStatus==="active"){
+      html += '<button class="btn danger" '+(State.sharingBusy?"disabled":"")+' onclick="Actions.revokeSharing()">Revoke access</button>';
+    }
+    html += '<button class="btn secondary" '+(State.sharingBusy?"disabled":"")+' onclick="Actions.resendSharingLink()">Resend link'+(linkStatus!=="active"?" (new link)":"")+'</button>';
+    html += '</div>';
+  } else {
+    html += '<p class="muted">Sharing is currently <strong>OFF</strong>. Turn it on and enter your local PT’s details to email them a secure, view-only link.</p>';
+    html += '<form onsubmit="Actions.enableSharing(event)"><div class="grid">'+
+      '<div class="field"><label>PT name</label><input type="text" name="ptName" required placeholder="e.g. Dana Kim, PT"></div>'+
+      '<div class="field"><label>PT email</label><input type="text" name="ptEmail" required placeholder="pt@clinic.example"></div>'+
+      '</div><button type="submit" class="btn" '+(State.sharingBusy?"disabled":"")+'>Turn on sharing &amp; send link</button></form>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// Fallback used only when SHARING_API_BASE is blank (no backend deployed/configured):
+// a plain on/off toggle with no email, no revocable magic link, and no audit trail.
+function renderSharingLocalOnly(p){
+  var html = '<div class="card"><h2>Sharing Settings</h2>';
+  html += '<div class="alert alert-info">No sharing backend is configured for this deployment (SHARING_API_BASE is blank), so this is local-only demo mode: the toggle just flips a flag in this browser’s local storage — no email is sent and there’s no revocable link. See /server in the repo for the real implementation.</div>';
   html += '<div class="toggle-row"><div><strong>'+escapeHtml(p.localPtName)+'</strong><div class="muted">When on, flagged check-ins and concerns may be shared with your local PT.</div></div>';
   html += '<label class="switch"><input type="checkbox" '+(p.sharingEnabled?"checked":"")+' onchange="Actions.toggleSharing()"><span class="slider"></span></label></div>';
   html += '<p class="muted">Sharing is currently <strong>'+(p.sharingEnabled?"ON":"OFF")+'</strong>. This choice is always yours — the app will never override it.</p>';

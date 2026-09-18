@@ -1,0 +1,19 @@
+{
+  "name": "myositis-companion-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reference backend for Myositis Home Companion magic-link PT sharing. Separate from the static, backend-free frontend in the repo root (which stays deployable on GitHub Pages on its own).",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "NODE_ENV=development node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
