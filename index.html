@@ -259,10 +259,10 @@ function buildSeedData(){
     var dow = parseISO(date).getDay(); // 1,3,5 = Mon/Wed/Fri session days
     if(dow===1||dow===3||dow===5){
       aLogs.push({date:date, logged:true, completed:true, rpe: 3+(i%3===0?1:0), pain: 1+(i%4===0?1:0),
-        fatigue: 2+(i%5===0?1:0), recovery:"under30", progressive:false, adlImpact:false, note:""});
+        fatigue: 2+(i%5===0?1:0), postExercisePain: 2+(i%4===0?1:0), recovery:"under30", progressive:false, adlImpact:false, note:""});
     } else if(dow===2||dow===4){
       // rest day, still captures pain/fatigue even though not completed
-      aLogs.push({date:date, logged:true, completed:false, rpe:null, pain:1, fatigue:2, recovery:null,
+      aLogs.push({date:date, logged:true, completed:false, rpe:null, pain:1, fatigue:2, postExercisePain:null, recovery:null,
         progressive:null, adlImpact:null, note:""});
     }
   }
@@ -321,15 +321,15 @@ function buildSeedData(){
   var bLogs = [];
   for(var j=10;j>=4;j--){
     var bd = addDaysISO(today,-j);
-    bLogs.push({date:bd, logged:true, completed:true, rpe:5, pain:3, fatigue:3, recovery:"under30",
+    bLogs.push({date:bd, logged:true, completed:true, rpe:5, pain:3, fatigue:3, postExercisePain:4, recovery:"under30",
       progressive:false, adlImpact:false, note:""});
   }
   // brief normal soreness blip a while back that resolves - should NOT trigger the rule
-  bLogs.push({date:addDaysISO(today,-9), logged:true, completed:true, rpe:5, pain:4, fatigue:4, recovery:"between30and60", progressive:false, adlImpact:false, note:"A bit sore, expected."});
+  bLogs.push({date:addDaysISO(today,-9), logged:true, completed:true, rpe:5, pain:4, fatigue:4, postExercisePain:5, recovery:"between30and60", progressive:false, adlImpact:false, note:"A bit sore, expected."});
   // the qualifying 3 consecutive high-pain/fatigue days ending today, most recent flagged progressive+adlImpact
-  bLogs.push({date:addDaysISO(today,-2), logged:true, completed:true, rpe:7, pain:5, fatigue:6, recovery:"notRecovered", progressive:true, adlImpact:false, note:"Pain lingered through the evening."});
-  bLogs.push({date:addDaysISO(today,-1), logged:true, completed:true, rpe:8, pain:6, fatigue:6, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Pain is worse than yesterday, not improving."});
-  bLogs.push({date:today, logged:true, completed:true, rpe:8, pain:7, fatigue:7, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Struggling with stairs and dressing today."});
+  bLogs.push({date:addDaysISO(today,-2), logged:true, completed:true, rpe:7, pain:5, fatigue:6, postExercisePain:6, recovery:"notRecovered", progressive:true, adlImpact:false, note:"Pain lingered through the evening."});
+  bLogs.push({date:addDaysISO(today,-1), logged:true, completed:true, rpe:8, pain:6, fatigue:6, postExercisePain:7, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Pain is worse than yesterday, not improving."});
+  bLogs.push({date:today, logged:true, completed:true, rpe:8, pain:7, fatigue:7, postExercisePain:8, recovery:"notRecovered", progressive:true, adlImpact:true, note:"Struggling with stairs and dressing today."});
 
   var patientB = {
     id:"p2", name:"Jordan Blake", diagnosisSubtype:"Dermatomyositis (DM)", sessionsPerWeek:3,
@@ -366,12 +366,12 @@ function buildSeedData(){
     var cd = addDaysISO(today,-k);
     var cdow = parseISO(cd).getDay();
     if(cdow===2||cdow===5){
-      cLogs.push({date:cd, logged:true, completed:true, rpe:4, pain:2, fatigue:2, recovery:"under30", progressive:false, adlImpact:false, note:""});
+      cLogs.push({date:cd, logged:true, completed:true, rpe:4, pain:2, fatigue:2, postExercisePain:2, recovery:"under30", progressive:false, adlImpact:false, note:""});
     }
   }
   // last completed session 5 days ago; nothing logged since (missed 3+ consecutive days)
   var lastCompletedDate = addDaysISO(today,-5);
-  cLogs.push({date:lastCompletedDate, logged:true, completed:true, rpe:4, pain:3, fatigue:4, recovery:"between30and60", progressive:false, adlImpact:false, note:"Fine, just tired."});
+  cLogs.push({date:lastCompletedDate, logged:true, completed:true, rpe:4, pain:3, fatigue:4, postExercisePain:3, recovery:"between30and60", progressive:false, adlImpact:false, note:"Fine, just tired."});
 
   var patientC = {
     id:"p3", name:"Sam Okafor", diagnosisSubtype:"Anti-synthetase syndrome", sessionsPerWeek:2,
@@ -397,7 +397,7 @@ function buildSeedData(){
     var dd = addDaysISO(today,-m);
     var ddow = parseISO(dd).getDay();
     if(ddow===2||ddow===5){
-      dLogs.push({date:dd, logged:true, completed:true, rpe:3, pain:2, fatigue:3, recovery:"under30", progressive:false, adlImpact:false, note:""});
+      dLogs.push({date:dd, logged:true, completed:true, rpe:3, pain:2, fatigue:3, postExercisePain:2, recovery:"under30", progressive:false, adlImpact:false, note:""});
     }
   }
 
@@ -873,8 +873,11 @@ Actions.saveDailyLog = function(ev){
   var completed = f.completed.checked;
   var entry = {
     date:date, logged:true, completed:completed,
-    rpe: completed ? Number(f.rpe.value) : null,
+    // Pre-session: asked every day, regardless of whether a session happens.
     pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
+    // Post-session: only asked once a session is marked completed.
+    rpe: completed ? Number(f.rpe.value) : null,
+    postExercisePain: completed ? Number(f.postExercisePain.value) : null,
     recovery: completed ? f.recovery.value : null,
     progressive: completed ? f.progressive.checked : null,
     adlImpact: completed ? f.adlImpact.checked : null,
@@ -885,7 +888,7 @@ Actions.saveDailyLog = function(ev){
 
   if(completed){
     var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
-    State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, advancedExerciseName:advancedExerciseName};
+    State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, postExercisePain:entry.postExercisePain, advancedExerciseName:advancedExerciseName};
   }
 
   saveData(); render();
@@ -1236,16 +1239,22 @@ function renderPatientDashboard(p){
 function renderPatientLog(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
-  html += '<p class="muted">Pain and fatigue are captured every day, whether or not you exercised.</p>';
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
-  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\'"> I completed my exercise session today</label></div>';
+
+  html += '<h3>Before your session</h3>';
+  html += '<p class="muted">Captured every day, whether or not you end up exercising.</p>';
   html += '<div class="grid">';
   html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
   html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
+
+  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\'"> I completed my exercise session today</label></div>';
+
   html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
+  html += '<h3>After your session</h3>';
   html += '<div class="grid">';
-  html += '<div class="field"><label>RPE (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'"></div>';
+  html += '<div class="field"><label>Perceived exertion / RPE (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'"></div>';
+  html += '<div class="field"><label>Pain right after your session (0–10)</label><input type="number" name="postExercisePain" min="0" max="10" value="'+(todayLog.postExercisePain!=null?todayLog.postExercisePain:"")+'"></div>';
   html += '<div class="field"><label>Recovery time</label><select name="recovery">'+
     Object.keys(RECOVERY_LABELS).map(function(k){ return '<option value="'+k+'"'+(todayLog.recovery===k?" selected":"")+'>'+RECOVERY_LABELS[k]+'</option>'; }).join("")+
     '</select></div>';
@@ -1253,13 +1262,14 @@ function renderPatientLog(p){
   html += '<div class="field"><label><input type="checkbox" name="progressive" '+(todayLog.progressive?"checked":"")+'> My symptoms feel progressively worse (not just normal soreness)</label></div>';
   html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
   html += '</div>';
+
   html += '<div class="field"><label>Note (optional)</label><textarea name="note" rows="2">'+escapeHtml(todayLog.note||"")+'</textarea></div>';
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>RPE</th><th>Pain</th><th>Fatigue</th><th>Recovery</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pre-session Pain</th><th>Fatigue</th><th>RPE</th><th>Post-session Pain</th><th>Recovery</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
-    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td><td>'+(l.recovery?RECOVERY_LABELS[l.recovery]:"—")+'</td></tr>';
+    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td><td>'+(l.postExercisePain!=null?l.postExercisePain:"—")+'</td><td>'+(l.recovery?RECOVERY_LABELS[l.recovery]:"—")+'</td></tr>';
   });
   html += '</table></div>';
   return html;
@@ -1344,7 +1354,8 @@ function renderPostSessionModal(){
   var check = Rules.checkPhaseAdvancement(p);
   var completeCount = p.phaseDosage.filter(function(d){ return d.currentSets>=d.targetSets; }).length;
   var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
-  html += '<p>RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Pain <strong>'+summary.pain+'</strong> &middot; Fatigue <strong>'+summary.fatigue+'</strong></p>';
+  html += '<p class="muted">Before your session: pain <strong>'+summary.pain+'</strong> &middot; fatigue <strong>'+summary.fatigue+'</strong></p>';
+  html += '<p>After your session: RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; pain <strong>'+(summary.postExercisePain!=null?summary.postExercisePain:"—")+'</strong></p>';
 
   if(summary.advancedExerciseName){
     var advancedEx = p.phaseDosage.find(function(d){ return d.name===summary.advancedExerciseName; });
