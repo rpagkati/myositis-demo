@@ -58,6 +58,14 @@
   .pill-endurance{background:#fff1e0;color:#b06a00;} .pill-aerobic{background:#e7f6ee;color:#1f8a55;}
   .stop-banner{background:var(--danger);color:#fff;padding:16px;border-radius:var(--radius);font-size:15px;font-weight:700;text-align:center;margin-bottom:14px;box-shadow:0 2px 10px rgba(179,36,28,.4);}
   .stop-banner .sub{font-weight:500;font-size:12.5px;margin-top:4px;}
+  .success-banner{background:var(--success);color:#fff;padding:16px;border-radius:var(--radius);font-size:15px;font-weight:700;text-align:center;margin-bottom:14px;box-shadow:0 2px 10px rgba(31,138,85,.35);}
+  .progress-bar{background:var(--bg);border:1px solid var(--border);border-radius:20px;height:10px;overflow:hidden;margin:4px 0;}
+  .progress-bar-fill{background:var(--primary);height:100%;border-radius:20px 0 0 20px;transition:width .2s;}
+  .progress-bar-fill.complete{background:var(--success);border-radius:20px;}
+  .criteria-list{list-style:none;padding:0;margin:0;font-size:12.5px;}
+  .criteria-list li{padding:5px 0;border-bottom:1px dashed var(--border);display:flex;align-items:center;gap:6px;}
+  .criteria-list li.met{color:var(--success);}
+  .criteria-list li.pending{color:var(--muted);}
   .modal-overlay{position:fixed;inset:0;background:rgba(20,25,35,.55);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px;}
   .modal{background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.3);}
   .modal h2{margin-top:0;}
@@ -173,6 +181,34 @@ function fomMeasuresFor(patient){
 var PROGRESSION_STEPS = {
   1:{startReps:20, advanceAt:30}, 2:{startReps:15, advanceAt:25}, 3:{startReps:10, advanceAt:20}, 4:{repsRange:[10,20]}
 };
+
+// ---- Phase Progression (Rule 3, v3) ----
+// Additive to the weighted Step 1-4 table above (Rule 3a) — fixed, non-per-patient templates for
+// the Phase 1 -> Phase 2 bodyweight/functional track. See Rules.checkPhaseAdvancement,
+// Rules.advancePhaseDosage, and buildPhaseDosageTemplate below.
+var PHASE_TEMPLATES = {
+  1: {
+    label:"Phase 1 (supine/sidelying, bodyweight)",
+    exercises:["Transversus abdominis activation","Heel slides","Straight leg raise","Clamshells","Sidelying hip abduction","Bridging"],
+    aerobic:{name:"Recumbent bike", detail:"Level 3, 80 steps/min, 10 minutes"}
+  },
+  2: {
+    label:"Phase 2 (standing/functional)",
+    exercises:["Sit to stand from chair","Wall squats","Step ups","Standing hip flexion","Standing hip abduction"],
+    aerobic:{name:"Recumbent bike", detail:"Level 4, 80 steps/min, 15 minutes"}
+  }
+};
+// TODO: the real IBM-specific exercise name and dosage for this slot still needs to come from
+// clinical input (see understandingmyositis.org-sourced-wording caveat elsewhere in this file for
+// the IBMFRS items) — this is a placeholder so both phase templates have a slot for it, not a
+// real prescription. Do not treat this as clinically validated.
+var IBM_PHASE_EXTRA_EXERCISE = "Quad sets / short-arc quads (IBM-specific — exercise & dosage TBD)";
+function buildPhaseDosageTemplate(patient, phase){
+  var names = PHASE_TEMPLATES[phase].exercises.slice();
+  if(isIbmPatient(patient)) names.push(IBM_PHASE_EXTRA_EXERCISE);
+  // "2 sets of 10 initially, progressing up to 3 sets of 10"
+  return names.map(function(name){ return {name:name, targetSets:3, targetReps:10, currentSets:2}; });
+}
 var REFERENCE_EXERCISES = [
   {id:"r1", name:"Sit-to-Stand", region:"Hip/Knee", category:"Core", desc:"Rise from a chair to standing without hand assist if tolerated; sit back with control.", equipment:"Sturdy chair"},
   {id:"r2", name:"Mini Squat", region:"Hip/Knee", category:"Core", desc:"Partial-range squat holding a stable surface as needed.", equipment:"Counter or rail"},
@@ -274,6 +310,12 @@ function buildSeedData(){
     ],
     checkinAlerts:[], lastMissedLogPromptHandledDate:null
   };
+  // Phase Progression demo state: ROM already confirmed, pain/fatigue already in range (see aLogs
+  // above), and dosage one exercise away from full — so logging a single more completed session
+  // (pain<5, fatigue<5) advances Bridging to 3/3 and makes all four Phase 2 criteria true at once.
+  patientA.phase = 1; patientA.progressionModel = "parallel"; patientA.dosageFrequencyDays = 2; patientA.romConfirmed = true;
+  patientA.phaseDosage = buildPhaseDosageTemplate(patientA, 1);
+  patientA.phaseDosage.forEach(function(d,i){ if(i<5) d.currentSets = 3; }); // all but Bridging (last) already at target
 
   // ---- Patient B: stop/regression case ----
   var bLogs = [];
@@ -312,6 +354,11 @@ function buildSeedData(){
     ],
     checkinAlerts:[], lastMissedLogPromptHandledDate:null
   };
+  // progressionModel "sequential" demonstrates the Rule 3a lock: Jordan's Shoulder Flexion Raise
+  // (a weighted-progression exercise) stays locked until Phase 2, regardless of how close its own
+  // step criteria are to being met.
+  patientB.phase = 1; patientB.progressionModel = "sequential"; patientB.dosageFrequencyDays = 2; patientB.romConfirmed = false;
+  patientB.phaseDosage = buildPhaseDosageTemplate(patientB, 1);
 
   // ---- Patient C: missed-log case (sharing off) ----
   var cLogs = [];
@@ -341,6 +388,8 @@ function buildSeedData(){
     mmt:[{date:addDaysISO(today,-30), hipFlexors:2.5, kneeExtensors:3, shoulderAbductors:3, ankleDorsiflexors:3}],
     checkinAlerts:[], lastMissedLogPromptHandledDate:null
   };
+  patientC.phase = 1; patientC.progressionModel = "parallel"; patientC.dosageFrequencyDays = 2; patientC.romConfirmed = false;
+  patientC.phaseDosage = buildPhaseDosageTemplate(patientC, 1);
 
   // ---- Patient D: IBM case, demonstrates itemized IBMFRS entry + per-item decline ----
   var dLogs = [];
@@ -383,19 +432,34 @@ function buildSeedData(){
     ],
     checkinAlerts:[], lastMissedLogPromptHandledDate:null
   };
+  patientD.phase = 1; patientD.progressionModel = "parallel"; patientD.dosageFrequencyDays = 2; patientD.romConfirmed = false;
+  patientD.phaseDosage = buildPhaseDosageTemplate(patientD, 1); // includes the IBM-specific placeholder item
 
   return {patients:[patientA, patientB, patientC, patientD]};
 }
 
 /* ======================== Storage ======================== */
+// Backfills Phase Progression fields onto patients saved by an earlier version of this app
+// (before this feature existed), so existing localStorage data doesn't crash on load.
+function ensurePhaseFields(patient){
+  if(patient.phase==null) patient.phase = 1;
+  if(patient.progressionModel==null) patient.progressionModel = "parallel";
+  if(patient.dosageFrequencyDays==null) patient.dosageFrequencyDays = 2;
+  if(patient.romConfirmed==null) patient.romConfirmed = false;
+  if(!Array.isArray(patient.phaseDosage)) patient.phaseDosage = buildPhaseDosageTemplate(patient, patient.phase);
+}
 function loadData(){
   var raw = localStorage.getItem(STORAGE_KEY);
+  var data = null;
   if(raw){
-    try{ return JSON.parse(raw); }catch(e){ /* fall through to reseed */ }
+    try{ data = JSON.parse(raw); }catch(e){ /* fall through to reseed */ }
   }
-  var seeded = buildSeedData();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-  return seeded;
+  if(!data){
+    data = buildSeedData();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+  data.patients.forEach(ensurePhaseFields);
+  return data;
 }
 function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(Data)); }
 function resetDemoData(){
@@ -499,6 +563,48 @@ Rules.advanceProgression = function(progression, newWeight){
     progression.currentReps = PROGRESSION_STEPS[4].repsRange[0];
   }
   return progression;
+};
+
+// Rule 3 (v3): Phase Progression — additive to the weighted Step 1-4 table above (Rule 3a).
+// Never auto-advances `phase`; see Actions.confirmPhaseAdvance for the explicit clinician action.
+Rules.checkPhaseAdvancement = function(patient){
+  var logged = patient.dailyLogs.filter(function(l){ return l.logged; }).slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  var mostRecent = logged.length ? logged[logged.length-1] : null;
+  var painOk = !!mostRecent && mostRecent.pain!=null && mostRecent.pain<=5;
+  // Fatigue on the most recent log is an approximation of "fatigue the day after" — a simplification,
+  // same caveat as the recovery-time-flag logic elsewhere in this app (Rule 4).
+  var fatigueOk = !!mostRecent && mostRecent.fatigue!=null && mostRecent.fatigue<=5;
+  var romOk = patient.romConfirmed === true;
+  var dosageOk = patient.phaseDosage.length>0 && patient.phaseDosage.every(function(d){ return d.currentSets>=d.targetSets; });
+  var criteria = [
+    {key:"pain", label:"Pain ≤5 on most recent log", met:painOk},
+    {key:"fatigue", label:"Fatigue ≤5 on most recent log (approximates “fatigue the day after” — a simplification)", met:fatigueOk},
+    {key:"rom", label:"Range-of-motion confirmed by clinician", met:romOk},
+    {key:"dosage", label:"All Phase "+patient.phase+" exercises at full dosage (3 sets of 10)", met:dosageOk}
+  ];
+  return {allMet: painOk && fatigueOk && romOk && dosageOk, criteria:criteria, mostRecentLog:mostRecent};
+};
+
+// Whether the 'sequential' progressionModel is currently withholding weighted resistance (Rule 3a)
+// until the Phase 1 template is complete. Does not alter how the weighted table itself works.
+Rules.weightedProgressionLocked = function(patient){
+  return patient.progressionModel==="sequential" && patient.phase<2;
+};
+
+// Placeholder pacing algorithm (validated in an interactive demo — match this exactly, don't
+// reinterpret): on a completed session with pain<5 AND fatigue<5, advances exactly ONE exercise in
+// phaseDosage by one set, round-robin through the list in order, skipping any already at target,
+// capped at targetSets. If pain>=5 or fatigue>=5, holds dosage steady for that session (same
+// load-reduction spirit as the stop/regression rule). A more clinically real version — tracking
+// actual per-exercise sets/reps the patient reports, gated by dosageFrequencyDays — is a reasonable
+// future iteration, not what this implements. Mutates patient.phaseDosage directly, same pattern as
+// Rules.advanceProgression above; only ever called from a completed-session save.
+Rules.advancePhaseDosage = function(patient, log){
+  if(log.pain>=5 || log.fatigue>=5) return null;
+  var next = patient.phaseDosage.find(function(d){ return d.currentSets<d.targetSets; });
+  if(!next) return null;
+  next.currentSets = Math.min(next.targetSets, next.currentSets+1);
+  return next.name;
 };
 
 // Rule 6: program composition audit
@@ -610,7 +716,8 @@ var State = {
   sharingBusy:false,
   sharingError:null,
   pdfReview:null,
-  pdfError:null
+  pdfError:null,
+  postSessionSummary:null // {patientId, rpe, pain, fatigue, advancedExerciseName} set right after a completed-session save
 };
 
 function el(id){ return document.getElementById(id); }
@@ -775,6 +882,12 @@ Actions.saveDailyLog = function(ev){
   };
   var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
   if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
+
+  if(completed){
+    var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
+    State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, advancedExerciseName:advancedExerciseName};
+  }
+
   saveData(); render();
 };
 
@@ -842,6 +955,10 @@ Actions.editPrescription = function(patientId, exerciseId){
 
 Actions.confirmAdvance = function(patientId, exerciseId){
   var p = getPatient(patientId);
+  if(Rules.weightedProgressionLocked(p)){
+    alert("Weighted resistance progression is locked until "+p.name+" advances to Phase 2 (progression model: sequential).");
+    return;
+  }
   var ex = p.program.find(function(e){ return e.id===exerciseId; });
   var status = Rules.progressionStatus(ex.progression);
   var msg = status.readyToAdvance
@@ -858,6 +975,27 @@ Actions.confirmAdvance = function(patientId, exerciseId){
   ex.history.push({date: nowISOTime(), prescription:"Advanced to step "+ex.progression.step+", "+ex.progression.currentReps+" reps @ "+ex.progression.currentWeight+" lb, "+ex.progression.currentSets+" set(s)", changedBy:"clinician"});
   saveData(); render();
 };
+
+Actions.setProgressionModel = function(patientId, val){
+  var p = getPatient(patientId); p.progressionModel = val; saveData(); render();
+};
+Actions.setDosageFrequency = function(patientId, val){
+  var p = getPatient(patientId); p.dosageFrequencyDays = Number(val); saveData(); render();
+};
+Actions.toggleRomConfirmed = function(patientId){
+  var p = getPatient(patientId); p.romConfirmed = !p.romConfirmed; saveData(); render();
+};
+Actions.confirmPhaseAdvance = function(patientId){
+  var p = getPatient(patientId);
+  var check = Rules.checkPhaseAdvancement(p);
+  if(!check.allMet) return; // button is disabled until all four criteria are met; this is just a safety guard
+  if(!confirm("Confirm advancing "+p.name+" from Phase "+p.phase+" to Phase "+(p.phase+1)+"?")) return;
+  p.phase += 1;
+  p.phaseDosage = buildPhaseDosageTemplate(p, p.phase);
+  p.romConfirmed = false; // next phase's gate starts fresh
+  saveData(); render();
+};
+Actions.dismissPostSessionSummary = function(){ State.postSessionSummary = null; render(); };
 
 Actions.saveFom = function(ev){
   ev.preventDefault();
@@ -1026,6 +1164,11 @@ function renderPatientRole(){
     html += renderCheckinModal(p, missed);
   }
 
+  // Post-session encouragement modal (shown right after a completed session log is saved)
+  if(State.postSessionSummary){
+    html += renderPostSessionModal();
+  }
+
   if(State.patientView==="dashboard") html += renderPatientDashboard(p);
   else if(State.patientView==="log") html += renderPatientLog(p);
   else if(State.patientView==="program") html += renderPatientProgram(p);
@@ -1123,17 +1266,104 @@ function renderPatientLog(p){
 }
 
 function renderPatientProgram(p){
-  var html = '<div class="card"><h2>Foundation Program</h2><p class="muted">Read-only — your PT manages changes to this program.</p>';
+  var html = renderPhaseProgressionCard(p, false);
+  html += '<div class="card"><h2>Foundation Program</h2><p class="muted">Read-only — your PT manages changes to this program.</p>';
   p.program.forEach(function(ex){
     html += '<div class="exercise-item"><div class="head"><strong>'+escapeHtml(ex.name)+'</strong><span class="pill pill-'+ex.category.toLowerCase()+'">'+ex.category+'</span></div>';
     html += '<p>'+escapeHtml(ex.prescription)+'</p>';
     if(ex.progression){
       var st = Rules.progressionStatus(ex.progression);
       html += '<p class="muted">Step '+ex.progression.step+' of 4 &middot; '+ex.progression.currentReps+' reps @ '+ex.progression.currentWeight+' lb &middot; '+ex.progression.currentSets+' set(s)</p>';
+      if(Rules.weightedProgressionLocked(p)){
+        html += '<p class="muted">🔒 Weighted progression locked until Phase 2 (progression model: sequential).</p>';
+      }
     }
     html += '</div>';
   });
   html += '</div>';
+  return html;
+}
+
+// ---- Phase Progression rendering (shared between the patient Program tab and the
+// clinician Program tab, so both stay visually and functionally identical) ----
+function renderDosageBars(p){
+  var html = "";
+  p.phaseDosage.forEach(function(d){
+    var pct = Math.round((d.currentSets/d.targetSets)*100);
+    var complete = d.currentSets>=d.targetSets;
+    html += '<div style="margin-bottom:8px;">'+
+      '<div class="row" style="justify-content:space-between;"><span>'+escapeHtml(d.name)+'</span><span class="muted">'+d.currentSets+'/'+d.targetSets+' sets of '+d.targetReps+'</span></div>'+
+      '<div class="progress-bar"><div class="progress-bar-fill'+(complete?" complete":"")+'" style="width:'+pct+'%;"></div></div>'+
+    '</div>';
+  });
+  return html;
+}
+function renderPhaseCriteria(check){
+  return '<ul class="criteria-list">'+check.criteria.map(function(c){
+    return '<li class="'+(c.met?"met":"pending")+'">'+(c.met?"✅":"⏳")+' '+c.label+'</li>';
+  }).join("")+'</ul>';
+}
+function renderPhaseProgressionCard(p, clinicianMode){
+  var template = PHASE_TEMPLATES[p.phase];
+  var check = Rules.checkPhaseAdvancement(p);
+  var html = '<div class="card"><h2>Phase Progression — Phase '+p.phase+'</h2><p class="muted">'+template.label+'</p>';
+
+  if(clinicianMode){
+    html += '<div class="grid">';
+    html += '<div class="field"><label>Progression model</label><select onchange="Actions.setProgressionModel(\''+p.id+'\',this.value)">'+
+      '<option value="parallel"'+(p.progressionModel==="parallel"?" selected":"")+'>Parallel</option>'+
+      '<option value="sequential"'+(p.progressionModel==="sequential"?" selected":"")+'>Sequential</option>'+
+      '</select></div>';
+    html += '<div class="field"><label>Dosage frequency</label><select onchange="Actions.setDosageFrequency(\''+p.id+'\',this.value)">'+
+      [1,2,3].map(function(n){ return '<option value="'+n+'"'+(p.dosageFrequencyDays===n?" selected":"")+'>'+(n===1?"Every day":n===2?"Every other day":"Every 3rd day")+'</option>'; }).join("")+
+      '</select></div>';
+    html += '</div>';
+    html += '<div class="toggle-row"><div><strong>ROM confirmed</strong><div class="muted">Stands in for the motion-capture ROM check (no real motion-capture input exists yet).</div></div>'+
+      '<label class="switch"><input type="checkbox" '+(p.romConfirmed?"checked":"")+' onchange="Actions.toggleRomConfirmed(\''+p.id+'\')"><span class="slider"></span></label></div>';
+  }
+
+  html += '<h3>Dosage</h3>'+renderDosageBars(p);
+  html += '<h3>Aerobic component</h3><p class="muted">'+escapeHtml(template.aerobic.name)+' — '+escapeHtml(template.aerobic.detail)+'</p>';
+
+  if(p.phase<2){
+    html += '<h3>Phase 2 advancement criteria</h3>'+renderPhaseCriteria(check);
+    if(check.allMet){
+      html += '<div class="success-banner">🎉 All Phase criteria met — your PT will review and confirm you’re ready for the next phase.</div>';
+    }
+    if(clinicianMode){
+      html += '<button class="btn" '+(check.allMet?"":"disabled")+' onclick="Actions.confirmPhaseAdvance(\''+p.id+'\')">Confirm advance to Phase 2</button>';
+    }
+  }
+
+  html += '</div>';
+  return html;
+}
+function renderPostSessionModal(){
+  var summary = State.postSessionSummary;
+  var p = getPatient(summary.patientId);
+  var check = Rules.checkPhaseAdvancement(p);
+  var completeCount = p.phaseDosage.filter(function(d){ return d.currentSets>=d.targetSets; }).length;
+  var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
+  html += '<p>RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Pain <strong>'+summary.pain+'</strong> &middot; Fatigue <strong>'+summary.fatigue+'</strong></p>';
+
+  if(summary.advancedExerciseName){
+    var advancedEx = p.phaseDosage.find(function(d){ return d.name===summary.advancedExerciseName; });
+    html += '<div class="alert alert-success">✅ '+escapeHtml(summary.advancedExerciseName)+' moved up to '+advancedEx.currentSets+' sets today.</div>';
+  } else if(summary.pain>=5 || summary.fatigue>=5){
+    html += '<div class="alert alert-warning">Pain or fatigue was elevated today, so we held dosage steady — no changes to your exercise sets.</div>';
+  } else {
+    html += '<p class="muted">All exercises are already at full dosage — nothing to advance today.</p>';
+  }
+
+  html += '<h3>Dosage progress</h3>'+renderDosageBars(p);
+  if(check.allMet){
+    html += '<div class="success-banner">🎉 All Phase criteria met — your PT will review and confirm you’re ready for the next phase.</div>';
+  } else {
+    html += '<p class="muted">'+completeCount+'/'+p.phaseDosage.length+' exercises are at full dosage.</p>';
+  }
+
+  html += '<div class="row" style="justify-content:flex-end;margin-top:10px;"><button class="btn" onclick="Actions.dismissPostSessionSummary()">Got it</button></div>';
+  html += '</div></div>';
   return html;
 }
 
@@ -1364,7 +1594,9 @@ function renderClinicianAlerts(p){
 }
 
 function renderClinicianProgram(p){
-  var html = '<div class="card"><h2>Foundation Program</h2>';
+  var html = renderPhaseProgressionCard(p, true);
+  var locked = Rules.weightedProgressionLocked(p);
+  html += '<div class="card"><h2>Foundation Program</h2>';
   p.program.forEach(function(ex){
     html += '<div class="exercise-item"><div class="head"><strong>'+escapeHtml(ex.name)+'</strong><span class="pill pill-'+ex.category.toLowerCase()+'">'+ex.category+'</span></div>';
     html += '<p>'+escapeHtml(ex.prescription)+' <button class="btn ghost" style="padding:3px 9px;font-size:11.5px;" onclick="Actions.editPrescription(\''+p.id+'\',\''+ex.id+'\')">Edit</button></p>';
@@ -1375,10 +1607,15 @@ function renderClinicianProgram(p){
       html += '<p class="muted">'+(ex.progression.step<4
         ? ('Advances at '+PROGRESSION_STEPS[ex.progression.step].advanceAt+' reps sustained.')
         : 'Step 4: weight held, adds sets (max 3) as reps are sustained at 10–20.')+'</p>';
-      html += st.readyToAdvance
-        ? '<div class="alert alert-success" style="margin:6px 0;">Criteria met — ready for clinician review.</div>'
-        : '<p class="muted">Not yet at advancement threshold.</p>';
-      html += '<button class="btn secondary" onclick="Actions.confirmAdvance(\''+p.id+'\',\''+ex.id+'\')">Confirm advance…</button>';
+      if(locked){
+        html += '<div class="alert alert-info" style="margin:6px 0;">🔒 Locked until Phase 2 (progression model: sequential).</div>';
+        html += '<button class="btn secondary" disabled>Confirm advance…</button>';
+      } else {
+        html += st.readyToAdvance
+          ? '<div class="alert alert-success" style="margin:6px 0;">Criteria met — ready for clinician review.</div>'
+          : '<p class="muted">Not yet at advancement threshold.</p>';
+        html += '<button class="btn secondary" onclick="Actions.confirmAdvance(\''+p.id+'\',\''+ex.id+'\')">Confirm advance…</button>';
+      }
     }
     html += '<div class="history-list"><strong>Change history:</strong><ul>'+ex.history.slice().reverse().map(function(h){
       return '<li>'+fmtDate(h.date.slice(0,10))+' — '+escapeHtml(h.prescription)+'</li>';
