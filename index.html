@@ -260,11 +260,9 @@ function buildSeedData(){
     if(dow===1||dow===3||dow===5){
       aLogs.push({date:date, logged:true, completed:true, rpe: 3+(i%3===0?1:0), pain: 1+(i%4===0?1:0),
         fatigue: 2+(i%5===0?1:0), postExercisePain: 2+(i%4===0?1:0), recovery:"under30", progressive:false, adlImpact:false, note:""});
-    } else if(dow===2||dow===4){
-      // rest day, still captures pain/fatigue even though not completed
-      aLogs.push({date:date, logged:true, completed:false, rpe:null, pain:1, fatigue:2, postExercisePain:null, recovery:null,
-        progressive:null, adlImpact:null, note:""});
     }
+    // Rest days (dow 2, 4) intentionally have no entry: pain/fatigue are only asked around an
+    // actual session now, so there's nothing to log on a day without one.
   }
   // Pick whichever completed session lands closest to ~9 days ago and mark it as a slow-recovery
   // session; this is resolved from the actual generated logs (not a fixed day offset) so it stays
@@ -276,7 +274,12 @@ function buildSeedData(){
   }, null);
   over60Log.recovery = "over60";
   over60Log.note = "More tired than usual after session, resolved by next day.";
-  // ensure the day after the over60 recovery session has a follow-up log (24h present), 48h missing
+  // Ensure the day after the over60 recovery session has a follow-up log (24h present), 48h
+  // missing, to demonstrate Rule 4. This is a deliberate exception to "no entry on a
+  // non-session day": Rule 4 checks for ANY logged entry at 24h/48h after a slow-recovery
+  // session (e.g. a same-day phone check-in with the clinic), not specifically another
+  // exercise session, so it's kept even though the current patient-facing form no longer has
+  // a way to create a non-session entry itself.
   var next1 = addDaysISO(over60Log.date,1);
   if(!aLogs.some(function(l){return l.date===next1;})){
     aLogs.push({date:next1, logged:true, completed:false, rpe:null, pain:2, fatigue:2, recovery:null, progressive:null, adlImpact:null, note:"Felt fine."});
@@ -870,26 +873,25 @@ Actions.saveDailyLog = function(ev){
   var f = ev.target;
   var p = getPatient(State.patientId);
   var date = todayISO();
-  var completed = f.completed.checked;
+  // Pain/fatigue/RPE are only ever asked as part of logging a completed session (see
+  // renderPatientLog) — there's no standalone daily check-in anymore, so nothing is saved
+  // unless a session happened. The submit button only exists inside that same block, so this
+  // is mostly a defensive guard rather than a normal path.
+  if(!f.completed.checked) return;
   var entry = {
-    date:date, logged:true, completed:completed,
-    // Pre-session: asked every day, regardless of whether a session happens.
+    date:date, logged:true, completed:true,
+    // Before your session.
     pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
-    // Post-session: only asked once a session is marked completed.
-    rpe: completed ? Number(f.rpe.value) : null,
-    postExercisePain: completed ? Number(f.postExercisePain.value) : null,
-    recovery: completed ? f.recovery.value : null,
-    progressive: completed ? f.progressive.checked : null,
-    adlImpact: completed ? f.adlImpact.checked : null,
+    // After your session.
+    rpe: Number(f.rpe.value), postExercisePain: Number(f.postExercisePain.value),
+    recovery: f.recovery.value, progressive: f.progressive.checked, adlImpact: f.adlImpact.checked,
     note: f.note.value.trim()
   };
   var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
   if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
 
-  if(completed){
-    var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
-    State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, postExercisePain:entry.postExercisePain, advancedExerciseName:advancedExerciseName};
-  }
+  var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
+  State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, postExercisePain:entry.postExercisePain, advancedExerciseName:advancedExerciseName};
 
   saveData(); render();
 };
@@ -1241,16 +1243,17 @@ function renderPatientLog(p){
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
+  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\';document.getElementById(\'noSessionNote\').style.display=this.checked?\'none\':\'block\';"> I completed my exercise session today</label></div>';
+
+  html += '<p class="muted" id="noSessionNote" style="display:'+(todayLog.completed?"none":"block")+'">Pain and fatigue are asked right before your session, and RPE/pain right after — check the box above once you’ve done a session today to log it.</p>';
+
+  html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
   html += '<h3>Before your session</h3>';
-  html += '<p class="muted">Captured every day, whether or not you end up exercising.</p>';
   html += '<div class="grid">';
   html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
   html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
 
-  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\'"> I completed my exercise session today</label></div>';
-
-  html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
   html += '<h3>After your session</h3>';
   html += '<div class="grid">';
   html += '<div class="field"><label>Perceived exertion / RPE (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'"></div>';
@@ -1261,10 +1264,9 @@ function renderPatientLog(p){
   html += '</div>';
   html += '<div class="field"><label><input type="checkbox" name="progressive" '+(todayLog.progressive?"checked":"")+'> My symptoms feel progressively worse (not just normal soreness)</label></div>';
   html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
-  html += '</div>';
-
   html += '<div class="field"><label>Note (optional)</label><textarea name="note" rows="2">'+escapeHtml(todayLog.note||"")+'</textarea></div>';
   html += '<button type="submit" class="btn">Save today’s log</button>';
+  html += '</div>';
   html += '</form></div>';
 
   html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pre-session Pain</th><th>Fatigue</th><th>RPE</th><th>Post-session Pain</th><th>Recovery</th></tr>';
