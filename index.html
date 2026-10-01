@@ -883,24 +883,22 @@ Actions.saveDailyLog = function(ev){
   var f = ev.target;
   var p = getPatient(State.patientId);
   var date = todayISO();
-  // Pain/fatigue are asked daily regardless of whether a session happens -- read as "how are
-  // you doing right now," which on a day following a session reflects that session's effect.
-  // recovery/progressive/adlImpact/note stay removed (not reinstated by this change).
-  var completed = f.completed.checked;
+  // Pain/fatigue are only asked before a session -- nothing is asked or saved on a day without
+  // one. The pain/fatigue fields and the submit button both live inside the same
+  // completed-gated block in renderPatientLog, so this is mostly a defensive guard.
+  if(!f.completed.checked) return;
   var entry = {
-    date:date, logged:true, completed:completed,
+    date:date, logged:true, completed:true,
     pain: Number(f.pain.value), fatigue: Number(f.fatigue.value)
   };
   var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
   if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
   saveData();
 
-  if(completed){
-    // Borg RPE isn't collected here -- it's asked immediately, as its own popup, right after
-    // marking the session complete (see renderBorgRpePrompt/Actions.submitBorgRpe below), rather
-    // than bundled into this form.
-    State.pendingRpePrompt = {patientId:p.id};
-  }
+  // Borg RPE isn't collected here -- it's asked immediately, as its own popup, right after
+  // marking the session complete (see renderBorgRpePrompt/Actions.submitBorgRpe below), rather
+  // than bundled into this form.
+  State.pendingRpePrompt = {patientId:p.id};
   render();
 };
 
@@ -1270,15 +1268,20 @@ function renderPatientDashboard(p){
 function renderPatientLog(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
-  html += '<p class="muted">Asked every day, before your session (if any) — on the day after a session, this reflects how that session affected you.</p>';
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
+
+  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\';document.getElementById(\'noSessionNote\').style.display=this.checked?\'none\':\'block\';"> I completed my exercise session today</label></div>';
+
+  html += '<p class="muted" id="noSessionNote" style="display:'+(todayLog.completed?"none":"block")+'">Check the box above once you’re doing a session today to log your pain and fatigue beforehand.</p>';
+
+  html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
   html += '<div class="grid">';
-  html += '<div class="field"><label>Current pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
-  html += '<div class="field"><label>Current fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '<div class="field"><label>Pain before session (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
+  html += '<div class="field"><label>Fatigue before session (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
-  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+'> I completed my exercise session today</label></div>';
-  html += '<p class="muted">If checked, you’ll be asked to rate the session (Borg RPE) right after saving.</p>';
+  html += '<p class="muted">You’ll be asked to rate the session (Borg RPE) right after saving.</p>';
   html += '<button type="submit" class="btn">Save today’s log</button>';
+  html += '</div>';
   html += '</form></div>';
 
   html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Borg RPE</th></tr>';
