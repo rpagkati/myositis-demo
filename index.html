@@ -209,6 +209,15 @@ function buildPhaseDosageTemplate(patient, phase){
   // "2 sets of 10 initially, progressing up to 3 sets of 10"
   return names.map(function(name){ return {name:name, targetSets:3, targetReps:10, currentSets:2}; });
 }
+// FUTURE DIRECTION (not yet implemented -- intentionally, see note): each DailyLog entry's
+// exerciseRpes (per-exercise Borg RPE, collected in Actions.submitExerciseRpe) is meant to
+// eventually drive automatic reps/sets adjustment for that specific exercise within its
+// targetSets/targetReps goal (e.g. the "3 sets of 10" above), on top of the existing round-robin
+// Rules.advancePhaseDosage. No RPE-to-reps/sets thresholds have been specified yet, and this app
+// deliberately never invents clinical thresholds (see the IBM placeholder above, or the PDF
+// import's "never auto-apply" rule) -- so exerciseRpes is captured and stored, but nothing reads
+// it to change dosage yet. Needs real thresholds (e.g. "RPE <=X for N sessions -> increase",
+// "RPE >=Y -> hold or reduce") from clinical input before this is implemented.
 var REFERENCE_EXERCISES = [
   {id:"r1", name:"Sit-to-Stand", region:"Hip/Knee", category:"Core", desc:"Rise from a chair to standing without hand assist if tolerated; sit back with control.", equipment:"Sturdy chair"},
   {id:"r2", name:"Mini Squat", region:"Hip/Knee", category:"Core", desc:"Partial-range squat holding a stable surface as needed.", equipment:"Counter or rail"},
@@ -492,11 +501,14 @@ Rules.gateCheck = function(patient){
 };
 
 // Rule 2: stop / regression
-// KNOWN GAP (accepted, not an oversight): `allHigh` below needs pain/fatigue (daily log collects
-// both again) but `recentFlags` also needs progressive/adlImpact, which the daily log form no
-// longer collects at all -- see renderPatientLog/Actions.saveDailyLog. So this still can't
-// trigger on newly-logged data (recentFlags can never be true), even though half its inputs are
-// back. Still works against the existing seeded/historical data, which was deliberately left as-is.
+// KNOWN GAP (accepted, not an oversight): `allHigh` needs pain/fatigue (collected again) and
+// `recentFlags` needs `progressive`/`adlImpact` both true. `adlImpact` is collected again too
+// ("This is affecting my daily activities"), but `progressive` ("feels progressively worse, not
+// just normal soreness") has no equivalent in the current form -- the closest field,
+// `postExerciseRelated` ("this pain/fatigue is related to my last exercise session"), asks a
+// different question (attribution/timing, not a worsening trend) and was deliberately NOT mapped
+// onto `progressive`. So `recentFlags` still can't be satisfied by newly-logged data. Still works
+// against the existing seeded/historical data, which was deliberately left as-is.
 Rules.stopRegressionCheck = function(patient){
   var logged = patient.dailyLogs.filter(function(l){ return l.logged; })
     .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
@@ -884,26 +896,30 @@ Actions.saveDailyLog = function(ev){
   var f = ev.target;
   var p = getPatient(State.patientId);
   var date = todayISO();
-  // Pain/fatigue are only asked before a session -- nothing is asked or saved on a day without
-  // one. The pain/fatigue fields and the submit button both live inside the same
-  // completed-gated block in renderPatientLog, so this is mostly a defensive guard.
-  if(!f.completed.checked) return;
+  // Pain/fatigue (and the two follow-up questions below) are asked before a session, but are
+  // never gated behind the "completed" checkbox -- a patient reports how they're doing whether
+  // or not they end up exercising that day.
+  var completed = f.completed.checked;
   var entry = {
-    date:date, logged:true, completed:true,
-    pain: Number(f.pain.value), fatigue: Number(f.fatigue.value)
+    date:date, logged:true, completed:completed,
+    pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
+    postExerciseRelated: f.postExerciseRelated.checked,
+    adlImpact: f.adlImpact.checked
   };
   var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
   if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
   saveData();
 
-  // Borg RPE isn't collected here. It's asked immediately: once per exercise, right after
-  // marking the session complete, walking through the patient's current-phase exercises one at
-  // a time (see renderExerciseRpePrompt/Actions.submitExerciseRpe) -- then once more for the
-  // session as a whole (renderBorgRpePrompt/Actions.submitBorgRpe).
-  if(p.phaseDosage && p.phaseDosage.length){
-    State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
-  } else {
-    State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
+  if(completed){
+    // Borg RPE isn't collected here. It's asked immediately: once per exercise, right after
+    // marking the session complete, walking through the patient's current-phase exercises one at
+    // a time (see renderExerciseRpePrompt/Actions.submitExerciseRpe) -- then once more for the
+    // session as a whole (renderBorgRpePrompt/Actions.submitBorgRpe).
+    if(p.phaseDosage && p.phaseDosage.length){
+      State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
+    } else {
+      State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
+    }
   }
   render();
 };
@@ -1308,26 +1324,28 @@ function renderPatientLog(p){
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
-  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\';document.getElementById(\'noSessionNote\').style.display=this.checked?\'none\':\'block\';"> I completed my exercise session today</label></div>';
-
-  html += '<p class="muted" id="noSessionNote" style="display:'+(todayLog.completed?"none":"block")+'">Check the box above once you’re doing a session today to log your pain and fatigue beforehand.</p>';
-
-  html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
   html += '<div class="grid">';
   html += '<div class="field"><label>Pain before session (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
   html += '<div class="field"><label>Fatigue before session (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
-  html += '<p class="muted">You’ll be asked to rate the session (Borg RPE) right after saving.</p>';
+  html += '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
+  html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
+
+  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+'> I completed my exercise session today</label></div>';
+  html += '<p class="muted">If checked, you’ll be asked to rate each exercise (and then the whole session) with the Borg RPE Scale right after saving.</p>';
+
   html += '<button type="submit" class="btn">Save today’s log</button>';
-  html += '</div>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Overall Borg RPE</th><th>Per-exercise RPE</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Overall Borg RPE</th><th>Per-exercise RPE</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
     var exerciseSummary = (l.exerciseRpes && l.exerciseRpes.length)
       ? l.exerciseRpes.map(function(r){ return r.name+" "+r.rpe; }).join(", ")
       : "—";
-    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td>'+
+    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td>'+
+      '<td>'+(l.postExerciseRelated==null?"—":(l.postExerciseRelated?"Yes":"No"))+'</td>'+
+      '<td>'+(l.adlImpact==null?"—":(l.adlImpact?"Yes":"No"))+'</td>'+
+      '<td>'+(l.rpe!=null?l.rpe:"—")+'</td>'+
       '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escapeHtml(exerciseSummary)+'">'+escapeHtml(exerciseSummary)+'</td></tr>';
   });
   html += '</table></div>';
