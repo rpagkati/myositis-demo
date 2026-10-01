@@ -492,6 +492,12 @@ Rules.gateCheck = function(patient){
 };
 
 // Rule 2: stop / regression
+// KNOWN GAP (accepted, not an oversight): this reads pain/fatigue/progressive/adlImpact from each
+// day's log. The daily log form no longer collects any of those fields (just Borg RPE +
+// post-exercise pain) -- see renderPatientLog/Actions.saveDailyLog -- so this can no longer
+// trigger on any newly-logged data; `allHigh` and `recentFlags` below will simply never both be
+// true for a log created after that change. Still works against the existing seeded/historical
+// data, which was deliberately left as-is.
 Rules.stopRegressionCheck = function(patient){
   var logged = patient.dailyLogs.filter(function(l){ return l.logged; })
     .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
@@ -525,6 +531,9 @@ Rules.checkinConcernFlag = function(entry){
 };
 
 // Rule 4: recovery-time flag
+// KNOWN GAP (accepted, not an oversight): depends on each log's `recovery` field, which the
+// daily log form no longer collects. `flagged` below will simply stay empty for any newly-logged
+// data. Still works against the existing seeded/historical data, which was deliberately left as-is.
 Rules.recoveryTimeFlags = function(patient){
   var byDate = {};
   patient.dailyLogs.forEach(function(l){ if(l.logged) byDate[l.date]=l; });
@@ -570,6 +579,14 @@ Rules.advanceProgression = function(progression, newWeight){
 
 // Rule 3 (v3): Phase Progression — additive to the weighted Step 1-4 table above (Rule 3a).
 // Never auto-advances `phase`; see Actions.confirmPhaseAdvance for the explicit clinician action.
+// KNOWN GAP (accepted, not an oversight): the pain/fatigue criteria below read `pain`/`fatigue`
+// from the most recent log, but the daily log form no longer collects either (just Borg RPE +
+// post-exercise pain). For any patient whose most recent log postdates that change, both
+// criteria read as not-met and allMet can never become true from new data alone. Unlike the
+// weighted-step table's Confirm-advance (which allows a clinician override via confirm()), the
+// "Confirm advance to Phase 2" button has no override path and stays disabled until allMet is
+// true -- so this doesn't just mean the two criteria look wrong, it means Phase 2 advancement
+// becomes unreachable through the UI for any patient logging only in the new format.
 Rules.checkPhaseAdvancement = function(patient){
   var logged = patient.dailyLogs.filter(function(l){ return l.logged; }).slice().sort(function(a,b){ return a.date<b.date?-1:1; });
   var mostRecent = logged.length ? logged[logged.length-1] : null;
@@ -595,15 +612,19 @@ Rules.weightedProgressionLocked = function(patient){
 };
 
 // Placeholder pacing algorithm (validated in an interactive demo — match this exactly, don't
-// reinterpret): on a completed session with pain<5 AND fatigue<5, advances exactly ONE exercise in
-// phaseDosage by one set, round-robin through the list in order, skipping any already at target,
-// capped at targetSets. If pain>=5 or fatigue>=5, holds dosage steady for that session (same
+// reinterpret): on a completed session with low post-exercise pain, advances exactly ONE exercise
+// in phaseDosage by one set, round-robin through the list in order, skipping any already at
+// target, capped at targetSets. If pain is elevated, holds dosage steady for that session (same
 // load-reduction spirit as the stop/regression rule). A more clinically real version — tracking
 // actual per-exercise sets/reps the patient reports, gated by dosageFrequencyDays — is a reasonable
 // future iteration, not what this implements. Mutates patient.phaseDosage directly, same pattern as
 // Rules.advanceProgression above; only ever called from a completed-session save.
+// Originally gated on pre-session pain/fatigue; the daily log no longer collects either (just
+// Borg RPE + post-exercise pain), so this reads postExercisePain instead. Left ungated here
+// would mean dosage silently advances every session regardless of pain, which is a worse outcome
+// than adapting to the data that's actually still collected.
 Rules.advancePhaseDosage = function(patient, log){
-  if(log.pain>=5 || log.fatigue>=5) return null;
+  if(log.postExercisePain>=5) return null;
   var next = patient.phaseDosage.find(function(d){ return d.currentSets<d.targetSets; });
   if(!next) return null;
   next.currentSets = Math.min(next.targetSets, next.currentSets+1);
@@ -873,25 +894,28 @@ Actions.saveDailyLog = function(ev){
   var f = ev.target;
   var p = getPatient(State.patientId);
   var date = todayISO();
-  // Pain/fatigue/RPE are only ever asked as part of logging a completed session (see
-  // renderPatientLog) — there's no standalone daily check-in anymore, so nothing is saved
+  // Borg RPE + post-exercise pain are only ever asked as part of logging a completed session
+  // (see renderPatientLog) — there's no standalone daily check-in anymore, so nothing is saved
   // unless a session happened. The submit button only exists inside that same block, so this
   // is mostly a defensive guard rather than a normal path.
   if(!f.completed.checked) return;
+  // NOTE: pre-session pain/fatigue and the recovery/progressive/adlImpact/note fields were
+  // removed from this form. New entries no longer carry those properties at all (only rpe and
+  // postExercisePain). Several Rules still read the removed fields on the ASSUMPTION they might
+  // be present (Rules.stopRegressionCheck's pain/fatigue/progressive/adlImpact check,
+  // Rules.recoveryTimeFlags' recovery check, Rules.checkPhaseAdvancement's pain/fatigue
+  // criteria) -- those checks simply can't be satisfied by any log created through this form
+  // anymore. They still work against the existing seeded/historical data, which was deliberately
+  // left untouched; this is a known, accepted gap for new data, not an oversight.
   var entry = {
     date:date, logged:true, completed:true,
-    // Before your session.
-    pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
-    // After your session.
-    rpe: Number(f.rpe.value), postExercisePain: Number(f.postExercisePain.value),
-    recovery: f.recovery.value, progressive: f.progressive.checked, adlImpact: f.adlImpact.checked,
-    note: f.note.value.trim()
+    rpe: Number(f.rpe.value), postExercisePain: Number(f.postExercisePain.value)
   };
   var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
   if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
 
   var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
-  State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, postExercisePain:entry.postExercisePain, advancedExerciseName:advancedExerciseName};
+  State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, postExercisePain:entry.postExercisePain, advancedExerciseName:advancedExerciseName};
 
   saveData(); render();
 };
@@ -1245,33 +1269,20 @@ function renderPatientLog(p){
 
   html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+' onchange="document.getElementById(\'sessionFields\').style.display=this.checked?\'block\':\'none\';document.getElementById(\'noSessionNote\').style.display=this.checked?\'none\':\'block\';"> I completed my exercise session today</label></div>';
 
-  html += '<p class="muted" id="noSessionNote" style="display:'+(todayLog.completed?"none":"block")+'">Pain and fatigue are asked right before your session, and RPE/pain right after — check the box above once you’ve done a session today to log it.</p>';
+  html += '<p class="muted" id="noSessionNote" style="display:'+(todayLog.completed?"none":"block")+'">Check the box above once you’ve completed a session to rate it.</p>';
 
   html += '<div id="sessionFields" style="display:'+(todayLog.completed?"block":"none")+'">';
-  html += '<h3>Before your session</h3>';
   html += '<div class="grid">';
-  html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
-  html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'" required></div>';
+  html += '<div class="field"><label>Post-exercise pain (0–10)</label><input type="number" name="postExercisePain" min="0" max="10" value="'+(todayLog.postExercisePain!=null?todayLog.postExercisePain:"")+'" required></div>';
   html += '</div>';
-
-  html += '<h3>After your session</h3>';
-  html += '<div class="grid">';
-  html += '<div class="field"><label>Perceived exertion / RPE (0–10)</label><input type="number" name="rpe" min="0" max="10" value="'+(todayLog.rpe!=null?todayLog.rpe:"")+'"></div>';
-  html += '<div class="field"><label>Pain right after your session (0–10)</label><input type="number" name="postExercisePain" min="0" max="10" value="'+(todayLog.postExercisePain!=null?todayLog.postExercisePain:"")+'"></div>';
-  html += '<div class="field"><label>Recovery time</label><select name="recovery">'+
-    Object.keys(RECOVERY_LABELS).map(function(k){ return '<option value="'+k+'"'+(todayLog.recovery===k?" selected":"")+'>'+RECOVERY_LABELS[k]+'</option>'; }).join("")+
-    '</select></div>';
-  html += '</div>';
-  html += '<div class="field"><label><input type="checkbox" name="progressive" '+(todayLog.progressive?"checked":"")+'> My symptoms feel progressively worse (not just normal soreness)</label></div>';
-  html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
-  html += '<div class="field"><label>Note (optional)</label><textarea name="note" rows="2">'+escapeHtml(todayLog.note||"")+'</textarea></div>';
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</div>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pre-session Pain</th><th>Fatigue</th><th>RPE</th><th>Post-session Pain</th><th>Recovery</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Borg RPE</th><th>Post-exercise Pain</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
-    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td><td>'+(l.postExercisePain!=null?l.postExercisePain:"—")+'</td><td>'+(l.recovery?RECOVERY_LABELS[l.recovery]:"—")+'</td></tr>';
+    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+(l.rpe!=null?l.rpe:"—")+'</td><td>'+(l.postExercisePain!=null?l.postExercisePain:"—")+'</td></tr>';
   });
   html += '</table></div>';
   return html;
@@ -1356,14 +1367,13 @@ function renderPostSessionModal(){
   var check = Rules.checkPhaseAdvancement(p);
   var completeCount = p.phaseDosage.filter(function(d){ return d.currentSets>=d.targetSets; }).length;
   var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
-  html += '<p class="muted">Before your session: pain <strong>'+summary.pain+'</strong> &middot; fatigue <strong>'+summary.fatigue+'</strong></p>';
-  html += '<p>After your session: RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; pain <strong>'+(summary.postExercisePain!=null?summary.postExercisePain:"—")+'</strong></p>';
+  html += '<p>Borg RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Post-exercise pain <strong>'+(summary.postExercisePain!=null?summary.postExercisePain:"—")+'</strong></p>';
 
   if(summary.advancedExerciseName){
     var advancedEx = p.phaseDosage.find(function(d){ return d.name===summary.advancedExerciseName; });
     html += '<div class="alert alert-success">✅ '+escapeHtml(summary.advancedExerciseName)+' moved up to '+advancedEx.currentSets+' sets today.</div>';
-  } else if(summary.pain>=5 || summary.fatigue>=5){
-    html += '<div class="alert alert-warning">Pain or fatigue was elevated today, so we held dosage steady — no changes to your exercise sets.</div>';
+  } else if(summary.postExercisePain>=5){
+    html += '<div class="alert alert-warning">Pain was elevated today, so we held dosage steady — no changes to your exercise sets.</div>';
   } else {
     html += '<p class="muted">All exercises are already at full dosage — nothing to advance today.</p>';
   }
