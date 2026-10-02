@@ -291,8 +291,8 @@ var EXERCISE_MEDIA = {
   "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=O1BXw0abQLs", videoSource:"Physiotutors"},
   "Transversus abdominis activation": {pose:"supine_core", videoUrl:"https://www.youtube.com/watch?v=Ielt7Mj-F_I", videoSource:"Canadian Chiropractic Guideline Initiative",
     videoCaveat:"Best match found, but not from a PT-brand channel like the others -- double-check it fits."},
-  "Heel slides": {pose:"supine_heel_slide", videoUrl:"https://healthy.kaiserpermanente.org/health-wellness/health-encyclopedia/he.how-to-do-heel-slides.acd9470", videoSource:"Kaiser Permanente",
-    videoCaveat:"A health-encyclopedia page, not confirmed to contain an embedded video (vs. text/images) -- check before relying on it as a “video.”"},
+  "Heel slides": {pose:"supine_heel_slide", videoUrl:"https://www.youtube.com/watch?v=c-gRSlCfNZE", videoSource:"YouTube (channel unconfirmed)",
+    videoCaveat:"Title matches exactly (“Heel Slides in Supine”) but not from one of the usual PT-brand channels -- double-check it fits."},
   "Clamshells": {pose:"sidelying_clamshell", videoUrl:"https://www.youtube.com/watch?v=O2KPabIoPPk", videoSource:"Ask Doctor Jo"},
   "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=EwBJKBa4PKU", videoSource:"Ask Doctor Jo"},
   "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo"},
@@ -1716,19 +1716,39 @@ var EXERCISE_POSE_SVGS = {
   step_up: fig(POSE_STEP+POSE_GROUND, [[60,36,64,66],[60,36,46,55],[60,36,74,55],[64,66,54,104],[64,66,100,90],[100,90,108,86]], [60,24], "↗", [90,50]),
   standing_hip_flexion: fig(POSE_GROUND+POSE_RAIL, [[70,32,72,62],[70,32,96,45],[70,32,56,55],[72,62,64,104],[72,62,96,66],[96,66,100,88]], [70,20], "↑", [100,48])
 };
+// Pulls the video ID out of a youtube.com/watch?v=... URL so we can show the video's own real
+// thumbnail (a real photo of a real person performing the exercise) instead of a drawn stick
+// figure, via YouTube's public img.youtube.com thumbnail CDN (no API key needed, standard
+// practice for link previews across the web). Non-YouTube links (and any exercise without a
+// video yet) fall back to the stick-figure illustration -- there's no equivalent predictable
+// thumbnail URL for an arbitrary site.
+function youTubeId(url){
+  var m = url && url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : null;
+}
 function renderExerciseMedia(name, widthPx){
   var m = EXERCISE_MEDIA[name];
-  var svg = (m && EXERCISE_POSE_SVGS[m.pose]) ? EXERCISE_POSE_SVGS[m.pose]
-    : '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No illustration yet</div>';
-  var videoHtml;
-  if(m && m.videoUrl){
-    videoHtml = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">▶ Watch demo video</a>';
-    if(m.videoSource) videoHtml += '<p class="muted" style="text-align:center;margin:3px 0 0;font-size:10px;">via '+escapeHtml(m.videoSource)+' &middot; link not yet click-verified</p>';
-    if(m.videoCaveat) videoHtml += '<p class="muted" style="text-align:center;margin:2px 0 0;font-size:10px;font-style:italic;">'+escapeHtml(m.videoCaveat)+'</p>';
+  var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
+  var media;
+  if(ytId){
+    media = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" style="display:block;position:relative;border-radius:8px;overflow:hidden;line-height:0;">'+
+      '<img src="https://img.youtube.com/vi/'+ytId+'/hqdefault.jpg" alt="'+escapeHtml(name)+' demo video thumbnail" loading="lazy" style="width:100%;display:block;">'+
+      '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.7);">▶</span>'+
+    '</a>';
+  } else if(m && EXERCISE_POSE_SVGS[m.pose]){
+    media = EXERCISE_POSE_SVGS[m.pose];
   } else {
-    videoHtml = '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;">No demo video yet</p>';
+    media = '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No illustration yet</div>';
   }
-  return '<div style="max-width:'+(widthPx||150)+'px;margin:0 auto;">'+svg+videoHtml+'</div>';
+  var caption;
+  if(m && m.videoUrl){
+    caption = ytId ? "" : '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">▶ Watch demo video</a>';
+    caption += '<p class="muted" style="text-align:center;margin:4px 0 0;font-size:10px;">'+(m.videoSource?"via "+escapeHtml(m.videoSource)+" &middot; ":"")+'not yet click-verified</p>';
+    if(m.videoCaveat) caption += '<p class="muted" style="text-align:center;margin:2px 0 0;font-size:10px;font-style:italic;">'+escapeHtml(m.videoCaveat)+'</p>';
+  } else {
+    caption = '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;">No demo video yet</p>';
+  }
+  return '<div style="max-width:'+(widthPx||150)+'px;margin:0 auto;">'+media+caption+'</div>';
 }
 
 function renderLibrary(){
