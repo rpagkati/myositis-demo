@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Myositis Home Companion</title>
+<!-- "Add to Home Screen" support (iOS Safari: Share -> Add to Home Screen; Android Chrome: menu ->
+     Install app): launches full-screen with no browser chrome, its own icon and title, so it reads
+     like a real app today without leaving this single static file / GitHub Pages deployment. A
+     true native iPhone app is a separate, much larger project -- different tech stack, Xcode, an
+     Apple Developer account -- and isn't what this does; see the chat response for that distinction. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Myositis">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2563a6">
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiTXlvc2l0aXMgSG9tZSBDb21wYW5pb24iLCJzaG9ydF9uYW1lIjoiTXlvc2l0aXMiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2YyZjVmOCIsInRoZW1lX2NvbG9yIjoiIzI1NjNhNiIsImljb25zIjpbXX0=">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232563a6'/%3E%3Ctext x='50' y='64' font-size='54' text-anchor='middle' fill='white' font-family='Arial, sans-serif'%3EM%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --bg:#f2f5f8; --surface:#ffffff; --text:#1c2530; --muted:#5b6b7b; --border:#dbe3ea;
@@ -210,14 +222,17 @@ function buildPhaseDosageTemplate(patient, phase){
   return names.map(function(name){ return {name:name, targetSets:3, targetReps:10, currentSets:2}; });
 }
 // FUTURE DIRECTION (not yet implemented -- intentionally, see note): each DailyLog entry's
-// exerciseRpes (per-exercise Borg RPE, collected in Actions.submitExerciseRpe) is meant to
-// eventually drive automatic reps/sets adjustment for that specific exercise within its
-// targetSets/targetReps goal (e.g. the "3 sets of 10" above), on top of the existing round-robin
-// Rules.advancePhaseDosage. No RPE-to-reps/sets thresholds have been specified yet, and this app
-// deliberately never invents clinical thresholds (see the IBM placeholder above, or the PDF
-// import's "never auto-apply" rule) -- so exerciseRpes is captured and stored, but nothing reads
-// it to change dosage yet. Needs real thresholds (e.g. "RPE <=X for N sessions -> increase",
-// "RPE >=Y -> hold or reduce") from clinical input before this is implemented.
+// exerciseRpes now captures, per exercise, the actual setsCompleted/repsCompleted the patient
+// reported alongside their Borg RPE (collected in Actions.submitExerciseRpe) -- exactly the
+// "tracking actual per-exercise sets/reps the patient reports" data this comment used to say was
+// still missing. That data is meant to eventually drive automatic reps/sets adjustment for that
+// specific exercise within its targetSets/targetReps goal (e.g. the "3 sets of 10" above), on top
+// of the existing round-robin Rules.advancePhaseDosage. No RPE-to-reps/sets thresholds have been
+// specified yet, and this app deliberately never invents clinical thresholds (see the IBM
+// placeholder above, or the PDF import's "never auto-apply" rule) -- so exerciseRpes is captured
+// and stored, but nothing reads it to change dosage yet. Needs real thresholds (e.g. "RPE <=X for
+// N sessions -> increase", "RPE >=Y -> hold or reduce") from clinical input before this is
+// implemented.
 var REFERENCE_EXERCISES = [
   {id:"r1", name:"Sit-to-Stand", region:"Hip/Knee", category:"Core", desc:"Rise from a chair to standing without hand assist if tolerated; sit back with control.", equipment:"Sturdy chair"},
   {id:"r2", name:"Mini Squat", region:"Hip/Knee", category:"Core", desc:"Partial-range squat holding a stable surface as needed.", equipment:"Counter or rail"},
@@ -741,7 +756,8 @@ var State = {
   sharingError:null,
   pdfReview:null,
   pdfError:null,
-  exerciseRpeFlow:null, // {patientId, index, ratings:[{name,rpe}]} walking through each phaseDosage exercise after a completed session, before the whole-session Borg RPE ask
+  exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after a completed session, before the whole-session Borg RPE ask
+  pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before the overall-session Borg RPE is collected
   postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once Borg RPE has been submitted
 };
@@ -913,20 +929,24 @@ Actions.saveDailyLog = function(ev){
   if(completed){
     // Borg RPE isn't collected here. It's asked immediately: once per exercise, right after
     // marking the session complete, walking through the patient's current-phase exercises one at
-    // a time (see renderExerciseRpePrompt/Actions.submitExerciseRpe) -- then once more for the
-    // session as a whole (renderBorgRpePrompt/Actions.submitBorgRpe).
+    // a time -- reps/sets completed, then Borg RPE (see renderExerciseRpePrompt/
+    // Actions.submitExerciseRpe) -- then once more for the session as a whole
+    // (renderBorgRpePrompt/Actions.submitBorgRpe).
     if(p.phaseDosage && p.phaseDosage.length){
       State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
     } else {
       State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
     }
+    stopPacingTimer();
   }
   render();
 };
 
-// Advances the per-exercise Borg RPE walkthrough to the next exercise, or -- once every exercise
-// has been rated (or skipped) -- hands off to the whole-session Borg RPE prompt.
+// Advances the per-exercise walkthrough to the next exercise, or -- once every exercise has been
+// rated (or skipped) -- hands off to the whole-session Borg RPE prompt. Always clears any running
+// pacing timer first, so it never bleeds from one exercise's modal into the next.
 function advanceExerciseRpeFlow(){
+  stopPacingTimer();
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   flow.index += 1;
@@ -944,12 +964,42 @@ Actions.submitExerciseRpe = function(ev){
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   var exercise = p.phaseDosage[flow.index];
-  flow.ratings.push({name:exercise.name, rpe:Number(f.rpe.value)});
+  flow.ratings.push({
+    name:exercise.name,
+    setsCompleted: Number(f.setsCompleted.value),
+    repsCompleted: Number(f.repsCompleted.value),
+    rpe: Number(f.rpe.value)
+  });
   advanceExerciseRpeFlow();
 };
 Actions.skipExerciseRpe = function(){
   advanceExerciseRpeFlow();
 };
+
+// ---- Pacing timer (optional visual aid shown while doing an exercise's reps, not a hard gate --
+// the patient can fill in and submit the form without ever starting it). Re-renders once per
+// second rather than animating the DOM directly, consistent with how this app handles all other
+// state changes -- simpler than keeping a timer's DOM node alive across unrelated re-renders.
+var pacingIntervalId = null;
+function stopPacingTimer(){
+  if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
+  State.pacingTimer = null;
+}
+Actions.startPacingTimer = function(durationSec){
+  stopPacingTimer();
+  State.pacingTimer = {totalSeconds:durationSec, secondsLeft:durationSec};
+  render();
+  pacingIntervalId = setInterval(function(){
+    if(!State.pacingTimer){ clearInterval(pacingIntervalId); pacingIntervalId=null; return; }
+    State.pacingTimer.secondsLeft -= 1;
+    if(State.pacingTimer.secondsLeft<=0){
+      State.pacingTimer.secondsLeft = 0;
+      clearInterval(pacingIntervalId); pacingIntervalId = null;
+    }
+    render();
+  }, 1000);
+};
+Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
 
 Actions.submitBorgRpe = function(ev){
   ev.preventDefault();
@@ -1337,10 +1387,10 @@ function renderPatientLog(p){
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Overall Borg RPE</th><th>Per-exercise RPE</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Overall Borg RPE</th><th>Per-exercise (sets×reps, RPE)</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
     var exerciseSummary = (l.exerciseRpes && l.exerciseRpes.length)
-      ? l.exerciseRpes.map(function(r){ return r.name+" "+r.rpe; }).join(", ")
+      ? l.exerciseRpes.map(function(r){ return r.name+" "+r.setsCompleted+"×"+r.repsCompleted+" RPE"+r.rpe; }).join(", ")
       : "—";
     html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td>'+
       '<td>'+(l.postExerciseRelated==null?"—":(l.postExerciseRelated?"Yes":"No"))+'</td>'+
@@ -1427,6 +1477,32 @@ function renderPhaseProgressionCard(p, clinicianMode){
 }
 // Asked once per exercise, immediately after the patient marks it done, before moving on to
 // the next one -- see Actions.saveDailyLog/submitExerciseRpe for how this walkthrough is driven.
+// Optional visual pacing aid (not a gate -- the form below can be filled in and submitted
+// without ever starting it). A countdown ring, same fill-as-you-progress idea as an Apple Watch
+// activity ring: the colored arc fills in as the timer elapses while the number counts down.
+// 30 seconds is a generic, non-prescriptive default (a reasonable pace for a set, not a clinical
+// tempo) -- see the FUTURE DIRECTION note near buildPhaseDosageTemplate for why this app doesn't
+// invent real exercise-tempo numbers either.
+function renderPacingRing(){
+  var t = State.pacingTimer;
+  if(!t){
+    return '<div style="text-align:center;margin:10px 0;"><button type="button" class="btn secondary" onclick="Actions.startPacingTimer(30)">Start pacing timer (30s)</button></div>';
+  }
+  var r = 50, c = 2*Math.PI*r;
+  var progress = (t.totalSeconds - t.secondsLeft) / t.totalSeconds;
+  var offset = c * (1 - progress);
+  var done = t.secondsLeft <= 0;
+  return '<div style="text-align:center;margin:10px 0;">'+
+    '<svg width="110" height="110" viewBox="0 0 120 120">'+
+      '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
+      '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
+        'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
+      '<text x="60" y="68" text-anchor="middle" font-size="26" fill="var(--text)">'+(done?"✓":t.secondsLeft)+'</text>'+
+    '</svg>'+
+    '<p class="muted">'+(done?"Nice pacing — log your set below.":"Pace each rep evenly — don’t rush.")+'</p>'+
+    '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">Reset timer</button>'+
+  '</div>';
+}
 function renderExerciseRpePrompt(){
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
@@ -1434,9 +1510,14 @@ function renderExerciseRpePrompt(){
   var isLast = flow.index === p.phaseDosage.length-1;
   return '<div class="modal-overlay"><div class="modal">'+
     '<h2>'+escapeHtml(exercise.name)+'</h2>'+
-    '<p class="muted">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+' &middot; '+exercise.currentSets+' sets of '+exercise.targetReps+' reps</p>'+
+    '<p class="muted">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+' &middot; goal: '+exercise.currentSets+' sets of '+exercise.targetReps+' reps</p>'+
+    renderPacingRing()+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
-      '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" required autofocus></div>'+
+      '<div class="grid">'+
+        '<div class="field"><label>Sets completed</label><input type="number" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required autofocus></div>'+
+        '<div class="field"><label>Reps completed (last set)</label><input type="number" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required></div>'+
+      '</div>'+
+      '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" required></div>'+
       '<div class="row" style="justify-content:space-between;margin-top:10px;">'+
         '<button type="button" class="btn ghost" onclick="Actions.skipExerciseRpe()">Didn’t do this one</button>'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
@@ -1464,8 +1545,8 @@ function renderPostSessionModal(){
   var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
   html += '<p>Overall Borg RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Pain <strong>'+summary.pain+'</strong> &middot; Fatigue <strong>'+summary.fatigue+'</strong></p>';
   if(summary.exerciseRpes && summary.exerciseRpes.length){
-    html += '<h3>Per-exercise Borg RPE</h3><ul class="criteria-list">'+summary.exerciseRpes.map(function(r){
-      return '<li>'+escapeHtml(r.name)+': <strong>'+r.rpe+'</strong></li>';
+    html += '<h3>Per-exercise results</h3><ul class="criteria-list">'+summary.exerciseRpes.map(function(r){
+      return '<li>'+escapeHtml(r.name)+': '+r.setsCompleted+'×'+r.repsCompleted+' reps, RPE <strong>'+r.rpe+'</strong></li>';
     }).join("")+'</ul>';
   }
 
