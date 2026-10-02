@@ -1148,6 +1148,38 @@ Actions.formatPacingLabel = function(minutes){
   return mm+":"+(ss<10?"0":"")+ss;
 };
 
+// ---- Accessible sets/reps entry: "did you hit the goal?" Yes/No first, numbers only if needed ----
+// Defaults to the lowest-effort path: the number inputs already default to the exercise's goal
+// (see the form fields below), so confirming "Yes" just locks those defaults in -- zero typing,
+// zero counting -- for the common case of a patient doing exactly what was prescribed. Only a
+// patient who did more or less ever needs to touch a number, at which point the stepper UI
+// (unchanged from before) appears pre-filled with the goal as a starting point to nudge from.
+// This keeps the underlying data (actual sets/reps, not just a yes/no) for Rules.advancePhaseDosage
+// and the history table either way -- a pure yes/no with no fallback would lose the difference
+// between "fell just short" and "barely started," which matters clinically.
+Actions.confirmGoalMet = function(){
+  var setsInput = document.getElementById("setsCompletedInput");
+  var repsInput = document.getElementById("repsCompletedInput");
+  if(setsInput) setsInput.value = setsInput.defaultValue;
+  if(repsInput) repsInput.value = repsInput.defaultValue;
+  document.getElementById("goalAsk").style.display = "none";
+  document.getElementById("goalAdjustFields").style.display = "none";
+  document.getElementById("goalYesConfirmed").style.display = "block";
+  Actions.speak("Goal met");
+};
+Actions.showGoalAdjust = function(){
+  document.getElementById("goalAsk").style.display = "none";
+  document.getElementById("goalYesConfirmed").style.display = "none";
+  document.getElementById("goalAdjustFields").style.display = "block";
+  var setsInput = document.getElementById("setsCompletedInput");
+  if(setsInput) setsInput.focus();
+};
+Actions.reopenGoalAsk = function(){
+  document.getElementById("goalYesConfirmed").style.display = "none";
+  document.getElementById("goalAdjustFields").style.display = "none";
+  document.getElementById("goalAsk").style.display = "block";
+};
+
 // ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
 // A patient with hand weakness or fatigue may find a tiny number-spinner or typing on a phone
 // keyboard harder than tapping a large button -- these +/- buttons sit beside the existing
@@ -1791,21 +1823,34 @@ function renderExerciseRpePrompt(){
       '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
         '<button type="button" class="btn ghost" style="padding:4px 10px;font-size:12px;" onclick="Actions.toggleCounterAudio()">'+(State.counterAudioOn?"🔊 Spoken count: on":"🔇 Spoken count: off")+'</button>'+
       '</div>'+
-      '<div class="grid">'+
-        '<div class="field"><label>Sets completed</label>'+
-          '<div class="stepper">'+
-            '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',-1)" aria-label="Decrease sets">−</button>'+
-            '<input type="number" id="setsCompletedInput" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required autofocus>'+
-            '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',1)" aria-label="Increase sets">+</button>'+
+      '<div id="goalAsk" style="margin-bottom:10px;">'+
+        '<p style="text-align:center;font-weight:600;margin:0 0 8px;">Did you complete '+exercise.currentSets+' sets × '+exercise.targetReps+' reps?</p>'+
+        '<div class="row" style="justify-content:center;gap:10px;">'+
+          '<button type="button" class="btn success" style="padding:12px 20px;font-size:15px;" onclick="Actions.confirmGoalMet()">✅ Yes, that’s right</button>'+
+          '<button type="button" class="btn secondary" style="padding:12px 16px;font-size:14px;" onclick="Actions.showGoalAdjust()">I did more or less</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="goalYesConfirmed" style="display:none;text-align:center;margin-bottom:10px;">'+
+        '<p class="muted">✓ Recorded: '+exercise.currentSets+' sets × '+exercise.targetReps+' reps &middot; <a href="#" onclick="Actions.reopenGoalAsk(); return false;">change</a></p>'+
+      '</div>'+
+      '<div id="goalAdjustFields" style="display:none;">'+
+        '<div class="grid">'+
+          '<div class="field"><label>Sets completed</label>'+
+            '<div class="stepper">'+
+              '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',-1)" aria-label="Decrease sets">−</button>'+
+              '<input type="number" id="setsCompletedInput" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required>'+
+              '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',1)" aria-label="Increase sets">+</button>'+
+            '</div>'+
+          '</div>'+
+          '<div class="field"><label>Reps completed (last set)</label>'+
+            '<div class="stepper">'+
+              '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',-1)" aria-label="Decrease reps">−</button>'+
+              '<input type="number" id="repsCompletedInput" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required>'+
+              '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',1)" aria-label="Increase reps">+</button>'+
+            '</div>'+
           '</div>'+
         '</div>'+
-        '<div class="field"><label>Reps completed (last set)</label>'+
-          '<div class="stepper">'+
-            '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',-1)" aria-label="Decrease reps">−</button>'+
-            '<input type="number" id="repsCompletedInput" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required>'+
-            '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',1)" aria-label="Increase reps">+</button>'+
-          '</div>'+
-        '</div>'+
+        '<p style="text-align:center;margin-top:-4px;"><a href="#" onclick="Actions.reopenGoalAsk(); return false;">← Back</a></p>'+
       '</div>'+
       '<div class="field"><label>Borg RPE Scale (0–10) — how hard did that feel?</label>'+renderRpeButtons()+'</div>'+
       '<div class="row" style="justify-content:space-between;margin-top:10px;">'+
