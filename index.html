@@ -252,6 +252,44 @@ var REFERENCE_EXERCISES = [
   {id:"r16", name:"Sit-to-Stand Endurance Set", region:"Hip/Knee", category:"Endurance", desc:"Repeated sit-to-stand cycles at a sustainable pace for time.", equipment:"Sturdy chair"}
 ];
 
+// ---- Exercise media (illustration + demo video) ----
+// Maps each exercise's exact name (as it appears in REFERENCE_EXERCISES and PHASE_TEMPLATES --
+// note some phase-template names differ only in casing from their reference-library counterpart,
+// e.g. "Straight leg raise" vs "Straight Leg Raise", so both are listed separately) to a simple
+// illustrative pose key (see EXERCISE_POSE_SVGS/renderExerciseMedia below) and a demo video URL.
+// videoUrl is a real, independently-sourced general exercise-instruction video, not anything
+// myositis-specific or clinically prescribed -- same "never invent clinical content" rule as the
+// IBM placeholder exercise and the PDF-import review screen: if a name has no verified video here,
+// renderExerciseMedia shows a plain "no demo video yet" note instead of guessing a link.
+var EXERCISE_MEDIA = {
+  "Sit-to-Stand": {pose:"sit_to_stand", videoUrl:null},
+  "Mini Squat": {pose:"squat_mini", videoUrl:null},
+  "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:null},
+  "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:null},
+  "Heel Raises": {pose:"heel_raise", videoUrl:null},
+  "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:null},
+  "Wall Push-up": {pose:"wall_pushup", videoUrl:null},
+  "Shoulder Flexion Raise": {pose:"shoulder_flexion", videoUrl:null},
+  "Scapular Squeeze": {pose:"scapular_squeeze", videoUrl:null},
+  "Seated Marching": {pose:"seated_marching", videoUrl:null},
+  "Bridging": {pose:"bridge", videoUrl:null},
+  "Modified Plank": {pose:"plank", videoUrl:null},
+  "Stationary Cycling": {pose:"cycling", videoUrl:null},
+  "Supported Treadmill Walking": {pose:"treadmill", videoUrl:null},
+  "Water Walking": {pose:"water_walking", videoUrl:null},
+  "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:null},
+  "Transversus abdominis activation": {pose:"supine_core", videoUrl:null},
+  "Heel slides": {pose:"supine_heel_slide", videoUrl:null},
+  "Straight leg raise": {pose:"supine_straight_leg_raise", videoUrl:null},
+  "Clamshells": {pose:"sidelying_clamshell", videoUrl:null},
+  "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:null},
+  "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:null},
+  "Wall squats": {pose:"squat_wall", videoUrl:null},
+  "Step ups": {pose:"step_up", videoUrl:null},
+  "Standing hip flexion": {pose:"standing_hip_flexion", videoUrl:null},
+  "Standing hip abduction": {pose:"standing_hip_abduction", videoUrl:null}
+};
+
 /* ======================== Utilities ======================== */
 function pad2(n){ return n<10 ? "0"+n : ""+n; }
 function toISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
@@ -1553,6 +1591,7 @@ function renderExerciseRpePrompt(){
   return '<div class="modal-overlay"><div class="modal">'+
     '<h2>'+escapeHtml(exercise.name)+'</h2>'+
     '<p class="muted">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+' &middot; goal: '+exercise.currentSets+' sets of '+exercise.targetReps+' reps</p>'+
+    renderExerciseMedia(exercise.name, 130)+
     renderPacingRing()+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
       '<div class="grid">'+
@@ -1613,6 +1652,68 @@ function renderPostSessionModal(){
   return html;
 }
 
+// ---- Exercise illustrations ----
+// Simple stick-figure SVG diagrams, one per distinct movement pattern (not one per exercise name
+// -- several names share the same pose, e.g. "Sit-to-Stand" and "Sit to stand from chair"). These
+// are schematic position/direction aids, not anatomically precise or clinically reviewed images;
+// see EXERCISE_MEDIA above for how each exercise name maps to a pose key and (if verified) a real
+// demo video. svg width/height are intentionally left at 100% so the wrapping element in
+// renderExerciseMedia controls the rendered size.
+function gLine(y){ return '<line x1="12" y1="'+y+'" x2="148" y2="'+y+'" stroke="var(--border)" stroke-width="3"/>'; }
+function rectShape(x,y,w,h){ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="none" stroke="var(--border)" stroke-width="3" rx="2"/>'; }
+var POSE_GROUND = gLine(104);
+var POSE_MAT = gLine(92);
+var POSE_CHAIR = rectShape(52,66,56,8)+rectShape(100,30,6,44);
+var POSE_WALL_RIGHT = rectShape(118,10,6,94);
+var POSE_WALL_LEFT = rectShape(6,10,6,94);
+var POSE_RAIL = '<line x1="134" y1="20" x2="134" y2="104" stroke="var(--border)" stroke-width="3"/>';
+var POSE_STEP = rectShape(95,86,40,18);
+var POSE_SEAT = rectShape(55,78,50,10);
+var POSE_WATER = '<path d="M12,76 q8,-6 16,0 t16,0 t16,0 t16,0 t16,0 t16,0 t16,0 t16,0" fill="none" stroke="var(--border)" stroke-width="2"/>';
+var POSE_BIKE = '<circle cx="40" cy="100" r="10" fill="none" stroke="var(--border)" stroke-width="3"/><circle cx="110" cy="100" r="10" fill="none" stroke="var(--border)" stroke-width="3"/><line x1="40" y1="100" x2="110" y2="100" stroke="var(--border)" stroke-width="3"/>'+rectShape(65,74,20,8);
+function fig(accessories, limbs, head, arrowGlyph, arrowPos){
+  var s = '<svg viewBox="0 0 160 110" style="display:block;width:100%;height:auto;">';
+  s += accessories||"";
+  limbs.forEach(function(l){ s += '<line x1="'+l[0]+'" y1="'+l[1]+'" x2="'+l[2]+'" y2="'+l[3]+'" stroke="var(--primary)" stroke-width="4" stroke-linecap="round"/>'; });
+  s += '<circle cx="'+head[0]+'" cy="'+head[1]+'" r="8" fill="none" stroke="var(--primary)" stroke-width="4"/>';
+  if(arrowGlyph) s += '<text x="'+arrowPos[0]+'" y="'+arrowPos[1]+'" font-size="18" fill="var(--muted)" text-anchor="middle">'+arrowGlyph+'</text>';
+  s += '</svg>';
+  return s;
+}
+var EXERCISE_POSE_SVGS = {
+  sit_to_stand: fig(POSE_CHAIR, [[78,36,80,66],[78,36,64,64],[78,36,92,64],[80,66,68,104],[80,66,92,104]], [78,24], "↑", [80,10]),
+  squat_mini: fig(POSE_RAIL, [[76,36,78,70],[76,36,128,55],[76,36,62,58],[78,70,66,104],[78,70,90,104]], [76,24], "↕", [40,20]),
+  standing_hip_abduction: fig(rectShape(34,50,10,54), [[80,32,80,62],[80,32,42,55],[80,32,96,50],[80,62,74,104],[80,62,112,86]], [80,20], "↔", [122,78]),
+  supine_straight_leg_raise: fig(POSE_MAT, [[38,78,66,78],[38,78,34,90],[66,78,80,90],[80,90,96,78],[66,78,128,52]], [26,78], "↑", [128,38]),
+  heel_raise: fig(POSE_GROUND+POSE_RAIL, [[80,34,80,64],[80,34,130,50],[80,34,64,55],[80,64,72,100],[80,64,88,100]], [80,22], "↑", [80,10]),
+  seated_ankle_pump: fig(POSE_SEAT, [[55,36,58,78],[55,36,40,60],[55,36,66,60],[58,78,100,80],[100,80,128,68]], [55,24], "↕", [132,56]),
+  wall_pushup: fig(POSE_WALL_RIGHT, [[70,34,74,64],[70,34,112,40],[70,34,112,50],[74,64,66,104],[74,64,84,104]], [70,22], "↔", [95,20]),
+  shoulder_flexion: fig(POSE_GROUND, [[80,32,80,62],[80,32,112,16],[80,32,66,55],[80,62,72,104],[80,62,88,104]], [80,20], "↑", [116,6]),
+  scapular_squeeze: fig(POSE_GROUND, [[80,32,80,62],[80,32,55,40],[80,32,105,40],[80,62,72,104],[80,62,88,104]], [80,20], "↔", [80,42]),
+  seated_marching: fig(POSE_SEAT, [[52,36,55,78],[52,36,40,58],[52,36,62,58],[55,78,70,100],[55,78,95,70],[95,70,112,86]], [52,24], "↑", [100,50]),
+  bridge: fig(POSE_MAT, [[36,84,66,68],[36,84,30,92],[66,68,92,82],[92,82,100,92]], [24,84], "↑", [66,50]),
+  plank: fig(POSE_MAT, [[36,70,34,88],[36,70,120,86]], [26,68], "⏱", [80,50]),
+  cycling: fig(POSE_BIKE, [[70,34,74,76],[70,34,50,55],[74,76,95,90],[95,90,80,100],[74,76,55,92],[55,92,70,102]], [70,22], "↻", [100,98]),
+  treadmill: fig(POSE_GROUND+POSE_RAIL, [[70,32,72,62],[70,32,55,50],[70,32,86,54],[72,62,58,104],[72,62,92,98]], [70,20], "→", [115,70]),
+  water_walking: fig(POSE_WATER, [[70,42,72,76],[70,42,55,60],[70,42,88,62],[72,76,60,100],[72,76,92,98]], [70,30], "→", [120,40]),
+  supine_core: fig(POSE_MAT, [[38,80,78,80],[38,80,34,90],[78,80,92,92],[92,92,108,80]], [26,80], "⏱", [58,66]),
+  supine_heel_slide: fig(POSE_MAT, [[36,80,70,80],[36,80,32,90],[70,80,112,80],[70,80,86,92],[86,92,78,80]], [24,80], "↔", [82,100]),
+  sidelying_clamshell: fig(POSE_MAT, [[38,76,72,76],[38,76,34,86],[72,76,92,90],[92,90,72,96],[72,76,98,64],[98,64,74,96]], [26,76], "↗", [104,56]),
+  sidelying_hip_abduction: fig(POSE_MAT, [[38,74,72,74],[38,74,34,84],[72,74,100,96],[72,74,112,60]], [26,74], "↑", [116,44]),
+  squat_wall: fig(POSE_WALL_LEFT, [[30,38,34,70],[30,38,16,55],[30,38,44,58],[34,70,20,104],[34,70,48,104]], [30,26], "↕", [70,20]),
+  step_up: fig(POSE_STEP+POSE_GROUND, [[60,36,64,66],[60,36,46,55],[60,36,74,55],[64,66,54,104],[64,66,100,90],[100,90,108,86]], [60,24], "↗", [90,50]),
+  standing_hip_flexion: fig(POSE_GROUND+POSE_RAIL, [[70,32,72,62],[70,32,96,45],[70,32,56,55],[72,62,64,104],[72,62,96,66],[96,66,100,88]], [70,20], "↑", [100,48])
+};
+function renderExerciseMedia(name, widthPx){
+  var m = EXERCISE_MEDIA[name];
+  var svg = (m && EXERCISE_POSE_SVGS[m.pose]) ? EXERCISE_POSE_SVGS[m.pose]
+    : '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No illustration yet</div>';
+  var videoHtml = (m && m.videoUrl)
+    ? '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">▶ Watch demo video</a>'
+    : '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;">No demo video yet</p>';
+  return '<div style="max-width:'+(widthPx||150)+'px;margin:0 auto;">'+svg+videoHtml+'</div>';
+}
+
 function renderLibrary(){
   var f = State.libraryFilter;
   var regions = ["All"].concat(Array.from(new Set(REFERENCE_EXERCISES.map(function(e){return e.region;}))));
@@ -1628,7 +1729,10 @@ function renderLibrary(){
   html += '</div>';
   if(!items.length) html += '<p class="muted">No exercises match your filters.</p>';
   items.forEach(function(e){
-    html += '<div class="lib-item"><div class="region">'+e.region+' &middot; '+e.category+'</div><strong>'+e.name+'</strong><p class="muted" style="margin:4px 0 0;">'+e.desc+'</p><p class="muted" style="margin:2px 0 0;">Equipment: '+e.equipment+'</p></div>';
+    html += '<div class="lib-item" style="display:flex;gap:12px;align-items:flex-start;">'+
+      '<div style="flex:0 0 100px;">'+renderExerciseMedia(e.name, 100)+'</div>'+
+      '<div style="flex:1;min-width:0;"><div class="region">'+e.region+' &middot; '+e.category+'</div><strong>'+e.name+'</strong><p class="muted" style="margin:4px 0 0;">'+e.desc+'</p><p class="muted" style="margin:2px 0 0;">Equipment: '+e.equipment+'</p></div>'+
+    '</div>';
   });
   html += '</div>';
   return html;
