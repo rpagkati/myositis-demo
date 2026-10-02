@@ -106,6 +106,8 @@
   .rpe-grid button.rpe-mid{background:var(--warning-bg);border-color:var(--warning);}
   .rpe-grid button.rpe-high{background:var(--danger-bg);border-color:var(--danger);}
   .rpe-grid button.selected{outline:3px solid var(--primary);outline-offset:1px;}
+  @keyframes pacingPulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  #pacingArc.pacing-live{animation:pacingPulse 1s ease-in-out infinite;}
   .lib-item{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
   .lib-item .region{font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase;}
   .toggle-row{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
@@ -1794,7 +1796,7 @@ function renderPacingRing(){
     '<p style="margin:0 0 4px;font-weight:700;font-size:14px;">⏱ Pacing Timer</p>'+
     '<svg width="110" height="110" viewBox="0 0 120 120">'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
-      '<circle id="pacingArc" cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
+      '<circle id="pacingArc" class="'+(done?"":"pacing-live")+'" cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
       '<text id="pacingLabel" x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
