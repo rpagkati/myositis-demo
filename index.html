@@ -758,6 +758,7 @@ var State = {
   pdfError:null,
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after a completed session, before the whole-session Borg RPE ask
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
+  pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before the overall-session Borg RPE is collected
   postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once Borg RPE has been submitted
 };
@@ -987,6 +988,7 @@ function stopPacingTimer(){
 }
 Actions.startPacingTimer = function(durationSec){
   stopPacingTimer();
+  if(durationSec==null) durationSec = State.pacingDurationSec;
   State.pacingTimer = {totalSeconds:durationSec, secondsLeft:durationSec};
   render();
   pacingIntervalId = setInterval(function(){
@@ -1000,6 +1002,15 @@ Actions.startPacingTimer = function(durationSec){
   }, 1000);
 };
 Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
+// Patient's chosen pacing length, in whole minutes (fractional allowed down to 0.5), carried over
+// to the next exercise's prompt so they don't have to re-pick it each time.
+Actions.setPacingDuration = function(minutes){
+  var sec = Math.round(Number(minutes)*60);
+  if(!isFinite(sec) || sec<15) sec = 15;
+  if(sec>1800) sec = 1800;
+  State.pacingDurationSec = sec;
+  render();
+};
 
 Actions.submitBorgRpe = function(ev){
   ev.preventDefault();
@@ -1480,24 +1491,43 @@ function renderPhaseProgressionCard(p, clinicianMode){
 // Optional visual pacing aid (not a gate -- the form below can be filled in and submitted
 // without ever starting it). A countdown ring, same fill-as-you-progress idea as an Apple Watch
 // activity ring: the colored arc fills in as the timer elapses while the number counts down.
-// 30 seconds is a generic, non-prescriptive default (a reasonable pace for a set, not a clinical
-// tempo) -- see the FUTURE DIRECTION note near buildPhaseDosageTemplate for why this app doesn't
-// invent real exercise-tempo numbers either.
+// 3 minutes is a generic, non-prescriptive default (long enough to not rush a myositis patient
+// through a set, not a clinical tempo) -- see the FUTURE DIRECTION note near
+// buildPhaseDosageTemplate for why this app doesn't invent real exercise-tempo numbers either.
+// The patient can change it to whatever pace feels right for them before starting, and that choice
+// carries over to the next exercise (State.pacingDurationSec) so they don't re-pick it every time.
 function renderPacingRing(){
   var t = State.pacingTimer;
   if(!t){
-    return '<div style="text-align:center;margin:10px 0;"><button type="button" class="btn secondary" onclick="Actions.startPacingTimer(30)">Start pacing timer (30s)</button></div>';
+    var mins = State.pacingDurationSec/60;
+    var presets = [1,2,3,5,10];
+    return '<div style="text-align:center;margin:10px 0;">'+
+      '<p class="muted" style="margin-bottom:4px;">Pacing timer length</p>'+
+      '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;">'+
+        presets.map(function(m){
+          var active = m===mins;
+          return '<button type="button" class="btn '+(active?"":"secondary")+'" style="padding:6px 12px;" onclick="Actions.setPacingDuration('+m+')">'+m+' min</button>';
+        }).join("")+
+      '</div>'+
+      '<div class="field" style="max-width:150px;margin:0 auto 10px;">'+
+        '<label>Or set custom (minutes)</label>'+
+        '<input type="number" min="0.5" max="30" step="0.5" value="'+mins+'" onchange="Actions.setPacingDuration(this.value)">'+
+      '</div>'+
+      '<button type="button" class="btn secondary" onclick="Actions.startPacingTimer()">Start pacing timer ('+mins+' min)</button>'+
+    '</div>';
   }
   var r = 50, c = 2*Math.PI*r;
   var progress = (t.totalSeconds - t.secondsLeft) / t.totalSeconds;
   var offset = c * (1 - progress);
   var done = t.secondsLeft <= 0;
+  var mm = Math.floor(t.secondsLeft/60), ss = t.secondsLeft%60;
+  var label = done ? "✓" : (mm+":"+(ss<10?"0":"")+ss);
   return '<div style="text-align:center;margin:10px 0;">'+
     '<svg width="110" height="110" viewBox="0 0 120 120">'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
-      '<text x="60" y="68" text-anchor="middle" font-size="26" fill="var(--text)">'+(done?"✓":t.secondsLeft)+'</text>'+
+      '<text x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
     '<p class="muted">'+(done?"Nice pacing — log your set below.":"Pace each rep evenly — don’t rush.")+'</p>'+
     '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">Reset timer</button>'+
