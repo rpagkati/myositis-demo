@@ -43,6 +43,8 @@
   button.btn.secondary{background:#fff;color:var(--primary);}
   button.btn.danger{background:var(--danger);border-color:var(--danger);}
   button.btn.ghost{background:transparent;border-color:var(--border);color:var(--text);}
+  button.btn.success{background:var(--success);border-color:var(--success);}
+  button.btn.success:hover{background:#16703f;}
   button.btn:disabled{opacity:.45;cursor:not-allowed;}
   main{max-width:1080px;margin:0 auto;padding:18px 16px 60px;}
   .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
@@ -1086,13 +1088,22 @@ Actions.finishPacingTimerEarly = function(){
   render();
 };
 // Patient's chosen pacing length, in whole minutes (fractional allowed down to 0.5), carried over
-// to the next exercise's prompt so they don't have to re-pick it each time.
+// to the next exercise's prompt so they don't have to re-pick it each time. Matches the slider's
+// own 0.5-10 min range (see renderPacingRing).
 Actions.setPacingDuration = function(minutes){
   var sec = Math.round(Number(minutes)*60);
-  if(!isFinite(sec) || sec<15) sec = 15;
-  if(sec>1800) sec = 1800;
+  if(!isFinite(sec) || sec<30) sec = 30;
+  if(sec>600) sec = 600;
   State.pacingDurationSec = sec;
   render();
+};
+// Pure formatter (minutes -> "M:SS"), used both by the slider's live label (called directly from
+// its oninput, bypassing render -- see renderPacingRing) and anywhere else a minutes value needs
+// the same m:ss display.
+Actions.formatPacingLabel = function(minutes){
+  var totalSec = Math.round(Number(minutes)*60);
+  var mm = Math.floor(totalSec/60), ss = totalSec%60;
+  return mm+":"+(ss<10?"0":"")+ss;
 };
 
 // End-of-session wrap-up: whole-session Borg RPE plus pain/fatigue and the two follow-up
@@ -1618,26 +1629,28 @@ function renderPhaseProgressionCard(p, clinicianMode){
 // 3 minutes is a generic, non-prescriptive default (long enough to not rush a myositis patient
 // through a set, not a clinical tempo) -- see the FUTURE DIRECTION note near
 // buildPhaseDosageTemplate for why this app doesn't invent real exercise-tempo numbers either.
-// The patient can change it to whatever pace feels right for them before starting, and that choice
-// carries over to the next exercise (State.pacingDurationSec) so they don't re-pick it every time.
+//
+// Duration is set via a slider BEFORE starting, not live while the ring is running -- adjusting a
+// running countdown would mean the progress ring has to visually jump, which is more confusing
+// than it's worth. Changing your mind mid-set just means Reset -> drag -> Start again. The slider
+// uses a large native range input (a reasonable touch target without extra styling) and updates
+// its own text label directly via oninput (no full render while dragging -- see
+// Actions.recalcIbmfrsTotal/setCheckinConcern for the same "don't re-render mid-interaction"
+// pattern elsewhere in this file), committing to State only once the patient releases it.
 function renderPacingRing(){
   var t = State.pacingTimer;
   if(!t){
     var mins = State.pacingDurationSec/60;
-    var presets = [1,2,3,5,10];
     return '<div style="text-align:center;margin:10px 0;">'+
-      '<p class="muted" style="margin-bottom:4px;">Pacing timer length</p>'+
-      '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;">'+
-        presets.map(function(m){
-          var active = m===mins;
-          return '<button type="button" class="btn '+(active?"":"secondary")+'" style="padding:6px 12px;" onclick="Actions.setPacingDuration('+m+')">'+m+' min</button>';
-        }).join("")+
+      '<p class="muted" style="margin-bottom:2px;">Pacing length</p>'+
+      '<p id="pacingValueLabel" style="font-size:24px;font-weight:700;margin:0 0 6px;color:var(--primary);">'+Actions.formatPacingLabel(mins)+'</p>'+
+      '<input type="range" min="0.5" max="10" step="0.5" value="'+mins+'" style="width:85%;max-width:260px;" '+
+        'oninput="document.getElementById(\'pacingValueLabel\').textContent = Actions.formatPacingLabel(this.value)" '+
+        'onchange="Actions.setPacingDuration(this.value)">'+
+      '<div style="display:flex;justify-content:space-between;max-width:260px;margin:2px auto 16px;font-size:11px;color:var(--muted);">'+
+        '<span>30 sec</span><span>10 min</span>'+
       '</div>'+
-      '<div class="field" style="max-width:150px;margin:0 auto 10px;">'+
-        '<label>Or set custom (minutes)</label>'+
-        '<input type="number" min="0.5" max="30" step="0.5" value="'+mins+'" onchange="Actions.setPacingDuration(this.value)">'+
-      '</div>'+
-      '<button type="button" class="btn secondary" onclick="Actions.startPacingTimer()">Start pacing timer ('+mins+' min)</button>'+
+      '<button type="button" class="btn success" style="padding:14px 36px;font-size:17px;" onclick="Actions.startPacingTimer()">▶ Start Exercising</button>'+
     '</div>';
   }
   var r = 50, c = 2*Math.PI*r;
@@ -1647,13 +1660,14 @@ function renderPacingRing(){
   var mm = Math.floor(t.secondsLeft/60), ss = t.secondsLeft%60;
   var label = done ? "✓" : (mm+":"+(ss<10?"0":"")+ss);
   return '<div style="text-align:center;margin:10px 0;">'+
+    '<p style="margin:0 0 4px;font-weight:700;font-size:14px;">⏱ Pacing Timer</p>'+
     '<svg width="110" height="110" viewBox="0 0 120 120">'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
       '<text x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
-    '<p class="muted">'+(done?"Nice pacing — log your set below.":"Pace each rep evenly — don’t rush.")+'</p>'+
+    '<p class="muted">'+(done?"Nice pacing — log your set below.":"Move through your reps evenly until this finishes.")+'</p>'+
     '<div class="row" style="justify-content:center;gap:8px;">'+
       (done ? "" : '<button type="button" class="btn secondary" onclick="Actions.finishPacingTimerEarly()">Done early — stop timer</button>')+
       '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">'+(done?"Start a new timer":"Reset timer")+'</button>'+
