@@ -256,38 +256,50 @@ var REFERENCE_EXERCISES = [
 // Maps each exercise's exact name (as it appears in REFERENCE_EXERCISES and PHASE_TEMPLATES --
 // note some phase-template names differ only in casing from their reference-library counterpart,
 // e.g. "Straight leg raise" vs "Straight Leg Raise", so both are listed separately) to a simple
-// illustrative pose key (see EXERCISE_POSE_SVGS/renderExerciseMedia below) and a demo video URL.
-// videoUrl is a real, independently-sourced general exercise-instruction video, not anything
-// myositis-specific or clinically prescribed -- same "never invent clinical content" rule as the
-// IBM placeholder exercise and the PDF-import review screen: if a name has no verified video here,
-// renderExerciseMedia shows a plain "no demo video yet" note instead of guessing a link.
+// illustrative pose key (see EXERCISE_POSE_SVGS/renderExerciseMedia below) and a demo video.
+// videoUrl points to a real, independently-sourced general exercise-instruction video, not
+// anything myositis-specific or clinically prescribed -- same "never invent clinical content"
+// rule as the IBM placeholder exercise and the PDF-import review screen.
+//
+// IMPORTANT CAVEAT: these URLs were found via web search (matched by title/channel/description
+// across multiple independent search queries) but NOT fetched and confirmed to actually load --
+// this sandbox's network egress proxy blocks every domain except github.com, so neither this app
+// nor the research agent that found these could directly verify a single one resolves. Treat
+// these as "best candidate found," not "confirmed working," until someone clicks through on a
+// normal connection. videoCaveat flags the ones the research agent itself was least confident
+// about (couldn't find an ideal source match). If a link turns out dead or wrong, swap it here --
+// renderExerciseMedia falls back to a plain "no demo video yet" note for any exercise without an
+// entry, same as it did before these were added.
 var EXERCISE_MEDIA = {
-  "Sit-to-Stand": {pose:"sit_to_stand", videoUrl:null},
-  "Mini Squat": {pose:"squat_mini", videoUrl:null},
-  "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:null},
-  "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:null},
-  "Heel Raises": {pose:"heel_raise", videoUrl:null},
-  "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:null},
-  "Wall Push-up": {pose:"wall_pushup", videoUrl:null},
-  "Shoulder Flexion Raise": {pose:"shoulder_flexion", videoUrl:null},
-  "Scapular Squeeze": {pose:"scapular_squeeze", videoUrl:null},
-  "Seated Marching": {pose:"seated_marching", videoUrl:null},
-  "Bridging": {pose:"bridge", videoUrl:null},
-  "Modified Plank": {pose:"plank", videoUrl:null},
-  "Stationary Cycling": {pose:"cycling", videoUrl:null},
-  "Supported Treadmill Walking": {pose:"treadmill", videoUrl:null},
-  "Water Walking": {pose:"water_walking", videoUrl:null},
-  "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:null},
-  "Transversus abdominis activation": {pose:"supine_core", videoUrl:null},
-  "Heel slides": {pose:"supine_heel_slide", videoUrl:null},
-  "Straight leg raise": {pose:"supine_straight_leg_raise", videoUrl:null},
-  "Clamshells": {pose:"sidelying_clamshell", videoUrl:null},
-  "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:null},
-  "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:null},
-  "Wall squats": {pose:"squat_wall", videoUrl:null},
-  "Step ups": {pose:"step_up", videoUrl:null},
-  "Standing hip flexion": {pose:"standing_hip_flexion", videoUrl:null},
-  "Standing hip abduction": {pose:"standing_hip_abduction", videoUrl:null}
+  "Sit-to-Stand": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo"},
+  "Mini Squat": {pose:"squat_mini", videoUrl:"https://www.youtube.com/watch?v=GIz1C3yfE1s", videoSource:"Ask Doctor Jo"},
+  "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo"},
+  "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo"},
+  "Heel Raises": {pose:"heel_raise", videoUrl:"https://www.youtube.com/watch?v=J3qQrxPEhHA", videoSource:"Ask Doctor Jo"},
+  "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:"https://www.youtube.com/watch?v=ohvR3shCV90", videoSource:"Ask Doctor Jo"},
+  "Wall Push-up": {pose:"wall_pushup", videoUrl:"https://www.youtube.com/watch?v=AkNqpYt9Hjs", videoSource:"Bob & Brad"},
+  "Shoulder Flexion Raise": {pose:"shoulder_flexion", videoUrl:"https://www.youtube.com/watch?v=b7yQwf-K7z0", videoSource:"E3 Rehab",
+    videoCaveat:"Covers shoulder ROM generally, not an isolated flexion raise -- double-check it fits."},
+  "Scapular Squeeze": {pose:"scapular_squeeze", videoUrl:"https://www.youtube.com/watch?v=ouRhQE2iOI8", videoSource:"Ask Doctor Jo"},
+  "Seated Marching": {pose:"seated_marching", videoUrl:"https://www.youtube.com/watch?v=YCUy5lDcOtc", videoSource:"Ask Doctor Jo"},
+  "Bridging": {pose:"bridge", videoUrl:"https://www.youtube.com/watch?v=ytvP0oUDKYw", videoSource:"Ask Doctor Jo"},
+  "Modified Plank": {pose:"plank", videoUrl:"https://www.youtube.com/watch?v=vHKSPiF8N5I", videoSource:"Ask Doctor Jo"},
+  "Stationary Cycling": {pose:"cycling", videoUrl:"https://www.youtube.com/watch?v=XugMoMDxyhM", videoSource:"SilverSneakers"},
+  "Supported Treadmill Walking": {pose:"treadmill", videoUrl:"https://www.youtube.com/watch?v=4FOkSNhcncg", videoSource:"Margaret Martin, PT",
+    videoCaveat:"General beginner/senior treadmill workout, not specifically rail-assisted rehab walking -- double-check it fits."},
+  "Water Walking": {pose:"water_walking", videoUrl:"https://www.youtube.com/watch?v=ZgxniVfKT4I", videoSource:"Ask Doctor Jo"},
+  "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=O1BXw0abQLs", videoSource:"Physiotutors"},
+  "Transversus abdominis activation": {pose:"supine_core", videoUrl:"https://www.youtube.com/watch?v=Ielt7Mj-F_I", videoSource:"Canadian Chiropractic Guideline Initiative",
+    videoCaveat:"Best match found, but not from a PT-brand channel like the others -- double-check it fits."},
+  "Heel slides": {pose:"supine_heel_slide", videoUrl:"https://healthy.kaiserpermanente.org/health-wellness/health-encyclopedia/he.how-to-do-heel-slides.acd9470", videoSource:"Kaiser Permanente",
+    videoCaveat:"A health-encyclopedia page, not confirmed to contain an embedded video (vs. text/images) -- check before relying on it as a “video.”"},
+  "Clamshells": {pose:"sidelying_clamshell", videoUrl:"https://www.youtube.com/watch?v=O2KPabIoPPk", videoSource:"Ask Doctor Jo"},
+  "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=EwBJKBa4PKU", videoSource:"Ask Doctor Jo"},
+  "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo"},
+  "Wall squats": {pose:"squat_wall", videoUrl:"https://www.youtube.com/watch?v=DzsTgz-r6t0", videoSource:"Bob & Brad"},
+  "Step ups": {pose:"step_up", videoUrl:"https://www.youtube.com/watch?v=s5qERHI9iWQ", videoSource:"Bob & Brad"},
+  "Standing hip flexion": {pose:"standing_hip_flexion", videoUrl:"https://www.youtube.com/watch?v=ApZOAx24-X8", videoSource:"Ask Doctor Jo"},
+  "Standing hip abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo"}
 };
 
 /* ======================== Utilities ======================== */
@@ -1708,9 +1720,14 @@ function renderExerciseMedia(name, widthPx){
   var m = EXERCISE_MEDIA[name];
   var svg = (m && EXERCISE_POSE_SVGS[m.pose]) ? EXERCISE_POSE_SVGS[m.pose]
     : '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No illustration yet</div>';
-  var videoHtml = (m && m.videoUrl)
-    ? '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">▶ Watch demo video</a>'
-    : '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;">No demo video yet</p>';
+  var videoHtml;
+  if(m && m.videoUrl){
+    videoHtml = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">▶ Watch demo video</a>';
+    if(m.videoSource) videoHtml += '<p class="muted" style="text-align:center;margin:3px 0 0;font-size:10px;">via '+escapeHtml(m.videoSource)+' &middot; link not yet click-verified</p>';
+    if(m.videoCaveat) videoHtml += '<p class="muted" style="text-align:center;margin:2px 0 0;font-size:10px;font-style:italic;">'+escapeHtml(m.videoCaveat)+'</p>';
+  } else {
+    videoHtml = '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;">No demo video yet</p>';
+  }
   return '<div style="max-width:'+(widthPx||150)+'px;margin:0 auto;">'+svg+videoHtml+'</div>';
 }
 
