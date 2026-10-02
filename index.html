@@ -95,6 +95,17 @@
   .yesno button{flex:1;padding:9px;border-radius:6px;border:1px solid var(--border);background:#fff;font-weight:600;cursor:pointer;}
   .yesno button.selected-yes{background:var(--danger-bg);border-color:var(--danger);color:var(--danger);}
   .yesno button.selected-no{background:var(--success-bg);border-color:var(--success);color:var(--success);}
+  .stepper{display:flex;align-items:center;justify-content:center;gap:10px;}
+  .stepper button{width:48px;height:48px;min-width:48px;border-radius:50%;font-size:22px;font-weight:700;border:1px solid var(--border);background:#fff;cursor:pointer;color:var(--text);}
+  .stepper button.plus{background:var(--success);border-color:var(--success);color:#fff;}
+  .stepper button.minus{background:#fff;}
+  .stepper input{width:64px;text-align:center;font-size:24px;font-weight:800;padding:8px 4px;}
+  .rpe-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px;}
+  .rpe-grid button{padding:10px 0;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:16px;font-weight:700;cursor:pointer;color:var(--text);}
+  .rpe-grid button.rpe-low{background:var(--success-bg);border-color:var(--success);}
+  .rpe-grid button.rpe-mid{background:var(--warning-bg);border-color:var(--warning);}
+  .rpe-grid button.rpe-high{background:var(--danger-bg);border-color:var(--danger);}
+  .rpe-grid button.selected{outline:3px solid var(--primary);outline-offset:1px;}
   .lib-item{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
   .lib-item .region{font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase;}
   .toggle-row{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
@@ -833,6 +844,7 @@ var State = {
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
+  counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
   postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once the session wrap-up has been submitted
 };
@@ -1038,6 +1050,12 @@ function advanceExerciseRpeFlow(){
 Actions.submitExerciseRpe = function(ev){
   ev.preventDefault();
   var f = ev.target;
+  // The RPE value lives on a hidden input (see renderRpeButtons) that HTML5 "required" can't
+  // reliably enforce, so check it explicitly here instead.
+  if(f.rpe.value===""){
+    alert("Please tap a number to rate how hard that exercise felt (Borg RPE).");
+    return;
+  }
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   var exercise = p.phaseDosage[flow.index];
@@ -1073,10 +1091,34 @@ Actions.startPacingTimer = function(durationSec){
     if(State.pacingTimer.secondsLeft<=0){
       State.pacingTimer.secondsLeft = 0;
       clearInterval(pacingIntervalId); pacingIntervalId = null;
+      render(); // finished: full re-render for the checkmark/"done" state change (buttons, color, text)
+    } else {
+      // Every other tick: patch just the ring's arc + number in place instead of a full render.
+      // A full render() here would replace the embedded video iframe's outerHTML every second,
+      // which forces the browser to reload the YouTube player from scratch each time -- visibly
+      // "blinking" the video and killing any playback in progress. The ring is the only thing
+      // that needs to change mid-countdown; see updatePacingRingDom.
+      updatePacingRingDom();
     }
-    render();
   }, 1000);
 };
+// Lightweight per-second update used while the pacing timer is running (see
+// Actions.startPacingTimer above) -- recalculates exactly what renderPacingRing's running-state
+// branch would produce, but writes directly to the existing SVG nodes instead of re-rendering the
+// whole app, so nothing else on the exercise screen (the video embed, the form fields the patient
+// may be mid-typing into) gets disturbed.
+function updatePacingRingDom(){
+  var t = State.pacingTimer;
+  if(!t) return;
+  var r = 50, c = 2*Math.PI*r;
+  var progress = (t.totalSeconds - t.secondsLeft) / t.totalSeconds;
+  var offset = c * (1 - progress);
+  var mm = Math.floor(t.secondsLeft/60), ss = t.secondsLeft%60;
+  var arc = document.getElementById("pacingArc");
+  var label = document.getElementById("pacingLabel");
+  if(arc) arc.setAttribute("stroke-dashoffset", offset.toFixed(1));
+  if(label) label.textContent = mm+":"+(ss<10?"0":"")+ss;
+}
 Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
 // Lets the patient stop early if they finish their sets/reps before the timer runs out, instead
 // of waiting it out. Unlike resetPacingTimer (which clears the ring back to the length picker),
@@ -1105,6 +1147,63 @@ Actions.formatPacingLabel = function(minutes){
   var mm = Math.floor(totalSec/60), ss = totalSec%60;
   return mm+":"+(ss<10?"0":"")+ss;
 };
+
+// ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
+// A patient with hand weakness or fatigue may find a tiny number-spinner or typing on a phone
+// keyboard harder than tapping a large button -- these +/- buttons sit beside the existing
+// number input and just nudge its value directly (no full render per tap, same
+// "don't re-render mid-interaction" reasoning as the pacing slider), so the input itself stays
+// the single source of truth the form already reads on submit. Speaking the new count aloud
+// (built into every modern browser, no external service) means they don't have to look at the
+// screen to confirm a tap registered -- useful mid-exercise, e.g. lying down for a supine set.
+// Entirely optional: the number input can still be typed into directly, and audio can be muted.
+Actions.stepCounterInput = function(inputId, delta){
+  var el = document.getElementById(inputId);
+  if(!el) return;
+  var min = el.min!==""?Number(el.min):0, max = el.max!==""?Number(el.max):999;
+  var next = Math.max(min, Math.min(max, (Number(el.value)||0) + delta));
+  el.value = next;
+  Actions.speak(next);
+};
+Actions.toggleCounterAudio = function(){
+  State.counterAudioOn = !State.counterAudioOn;
+  render();
+};
+Actions.speak = function(text){
+  if(!State.counterAudioOn) return;
+  if(!window.speechSynthesis || typeof SpeechSynthesisUtterance==="undefined") return;
+  try{
+    window.speechSynthesis.cancel(); // don't let rapid taps queue up a backlog of utterances
+    var u = new SpeechSynthesisUtterance(String(text));
+    u.rate = 1.1;
+    window.speechSynthesis.speak(u);
+  }catch(e){ /* speech synthesis unavailable/blocked -- silently skip, it's a nice-to-have */ }
+};
+
+// ---- Accessible Borg RPE entry (large tap-to-select buttons instead of typing a number) ----
+// Same rationale as the sets/reps steppers above: a row of big, color-banded buttons (green/amber/
+// red for low/moderate/high effort, not a clinical threshold -- just a visual grouping of the
+// existing 0-10 scale) is easier to hit precisely than a number input, especially one-handed or
+// with reduced grip strength. Mirrors the Yes/No check-in buttons' direct-DOM-manipulation pattern
+// (Actions.setCheckinConcern) rather than a full render per tap.
+Actions.selectRpe = function(btn, val){
+  var form = btn.closest("form");
+  form.querySelector('input[name="rpe"]').value = val;
+  Array.prototype.forEach.call(btn.parentElement.querySelectorAll("button"), function(b){
+    b.classList.remove("selected");
+  });
+  btn.classList.add("selected");
+};
+function renderRpeButtons(){
+  var html = '<input type="hidden" name="rpe">';
+  html += '<div class="rpe-grid">';
+  for(var n=0;n<=10;n++){
+    var band = n<=3?"rpe-low":(n<=6?"rpe-mid":"rpe-high");
+    html += '<button type="button" class="'+band+'" onclick="Actions.selectRpe(this,'+n+')">'+n+'</button>';
+  }
+  html += '</div>';
+  return html;
+}
 
 // End-of-session wrap-up: whole-session Borg RPE plus pain/fatigue and the two follow-up
 // questions, all in one screen, submitted together once the workout itself is done. Finds or
@@ -1663,9 +1762,9 @@ function renderPacingRing(){
     '<p style="margin:0 0 4px;font-weight:700;font-size:14px;">⏱ Pacing Timer</p>'+
     '<svg width="110" height="110" viewBox="0 0 120 120">'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
-      '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
+      '<circle id="pacingArc" cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
-      '<text x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
+      '<text id="pacingLabel" x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
     '<p class="muted">'+(done?"Nice pacing — log your set below.":"Move through your reps evenly until this finishes.")+'</p>'+
     '<div class="row" style="justify-content:center;gap:8px;">'+
@@ -1681,15 +1780,34 @@ function renderExerciseRpePrompt(){
   var isLast = flow.index === p.phaseDosage.length-1;
   return '<div class="modal-overlay"><div class="modal">'+
     '<h2>'+escapeHtml(exercise.name)+'</h2>'+
-    '<p class="muted">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+' &middot; goal: '+exercise.currentSets+' sets of '+exercise.targetReps+' reps</p>'+
+    '<p class="muted" style="margin:0 0 8px;">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+'</p>'+
+    '<div style="background:var(--primary-bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;text-align:center;">'+
+      '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
+      '<p style="margin:2px 0 0;font-size:22px;font-weight:800;color:var(--primary-dark);">'+exercise.currentSets+' sets × '+exercise.targetReps+' reps</p>'+
+    '</div>'+
     renderExerciseMedia(exercise.name, 420, true)+
     renderPacingRing()+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
-      '<div class="grid">'+
-        '<div class="field"><label>Sets completed</label><input type="number" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required autofocus></div>'+
-        '<div class="field"><label>Reps completed (last set)</label><input type="number" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required></div>'+
+      '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
+        '<button type="button" class="btn ghost" style="padding:4px 10px;font-size:12px;" onclick="Actions.toggleCounterAudio()">'+(State.counterAudioOn?"🔊 Spoken count: on":"🔇 Spoken count: off")+'</button>'+
       '</div>'+
-      '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" required></div>'+
+      '<div class="grid">'+
+        '<div class="field"><label>Sets completed</label>'+
+          '<div class="stepper">'+
+            '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',-1)" aria-label="Decrease sets">−</button>'+
+            '<input type="number" id="setsCompletedInput" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required autofocus>'+
+            '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',1)" aria-label="Increase sets">+</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="field"><label>Reps completed (last set)</label>'+
+          '<div class="stepper">'+
+            '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',-1)" aria-label="Decrease reps">−</button>'+
+            '<input type="number" id="repsCompletedInput" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required>'+
+            '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',1)" aria-label="Increase reps">+</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="field"><label>Borg RPE Scale (0–10) — how hard did that feel?</label>'+renderRpeButtons()+'</div>'+
       '<div class="row" style="justify-content:space-between;margin-top:10px;">'+
         '<button type="button" class="btn ghost" onclick="Actions.skipExerciseRpe()">Didn’t do this one</button>'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
