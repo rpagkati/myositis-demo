@@ -1682,7 +1682,7 @@ function renderExerciseRpePrompt(){
   return '<div class="modal-overlay"><div class="modal">'+
     '<h2>'+escapeHtml(exercise.name)+'</h2>'+
     '<p class="muted">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+' &middot; goal: '+exercise.currentSets+' sets of '+exercise.targetReps+' reps</p>'+
-    renderExerciseMedia(exercise.name, 130)+
+    renderExerciseMedia(exercise.name, 420, true)+
     renderPacingRing()+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
       '<div class="grid">'+
@@ -1817,11 +1817,21 @@ function youTubeId(url){
   var m = url && url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
   return m ? m[1] : null;
 }
-function renderExerciseMedia(name, widthPx){
+function renderExerciseMedia(name, widthPx, embed){
   var m = EXERCISE_MEDIA[name];
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
   var media;
-  if(ytId){
+  if(ytId && embed){
+    // True inline embed (plays right there in the app, no new tab) -- used on the per-exercise
+    // session screen, where there's only ever one video on screen at a time. The Exercise Library
+    // list keeps the lighter thumbnail+link version below, since loading 16 live YouTube players
+    // at once would be unnecessarily heavy for a browsable reference list.
+    media = '<div style="position:relative;padding-top:56.25%;border-radius:8px;overflow:hidden;background:#000;">'+
+      '<iframe src="https://www.youtube.com/embed/'+ytId+'" title="'+escapeHtml(name)+' demo video" '+
+        'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '+
+        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>'+
+    '</div>';
+  } else if(ytId){
     media = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" style="display:block;position:relative;border-radius:8px;overflow:hidden;line-height:0;">'+
       '<img src="https://img.youtube.com/vi/'+ytId+'/hqdefault.jpg" alt="'+escapeHtml(name)+' demo video thumbnail" loading="lazy" style="width:100%;display:block;">'+
       '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.7);">▶</span>'+
