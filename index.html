@@ -1002,6 +1002,15 @@ Actions.startPacingTimer = function(durationSec){
   }, 1000);
 };
 Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
+// Lets the patient stop early if they finish their sets/reps before the timer runs out, instead
+// of waiting it out. Unlike resetPacingTimer (which clears the ring back to the length picker),
+// this leaves the ring showing its completed/checkmark state so it's clear the set is done and
+// they can go straight to entering sets/reps/RPE below.
+Actions.finishPacingTimerEarly = function(){
+  if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
+  if(State.pacingTimer) State.pacingTimer.secondsLeft = 0;
+  render();
+};
 // Patient's chosen pacing length, in whole minutes (fractional allowed down to 0.5), carried over
 // to the next exercise's prompt so they don't have to re-pick it each time.
 Actions.setPacingDuration = function(minutes){
@@ -1530,7 +1539,10 @@ function renderPacingRing(){
       '<text x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
     '<p class="muted">'+(done?"Nice pacing — log your set below.":"Pace each rep evenly — don’t rush.")+'</p>'+
-    '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">Reset timer</button>'+
+    '<div class="row" style="justify-content:center;gap:8px;">'+
+      (done ? "" : '<button type="button" class="btn secondary" onclick="Actions.finishPacingTimerEarly()">Done early — stop timer</button>')+
+      '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">'+(done?"Start a new timer":"Reset timer")+'</button>'+
+    '</div>'+
   '</div>';
 }
 function renderExerciseRpePrompt(){
