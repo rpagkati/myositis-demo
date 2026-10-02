@@ -847,6 +847,7 @@ var State = {
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
   counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
+  exerciseLogRevealed:false, // whether the per-exercise goal/RPE logging section is showing yet -- stays false (hidden, minimal screen) until the patient signals they're done with that exercise; see Actions.revealExerciseLog, reset per exercise in Actions.startWorkout/advanceExerciseRpeFlow
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
   postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once the session wrap-up has been submitted
 };
@@ -1025,6 +1026,7 @@ Actions.saveDailyLog = function(ev){
 // see the per-exercise flow below for how that walkthrough itself works.
 Actions.startWorkout = function(patientId){
   var p = getPatient(patientId);
+  State.exerciseLogRevealed = false;
   if(p.phaseDosage && p.phaseDosage.length){
     State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
   } else {
@@ -1035,9 +1037,12 @@ Actions.startWorkout = function(patientId){
 
 // Advances the per-exercise walkthrough to the next exercise, or -- once every exercise has been
 // rated (or skipped) -- hands off to the whole-session Borg RPE prompt. Always clears any running
-// pacing timer first, so it never bleeds from one exercise's modal into the next.
+// pacing timer first, so it never bleeds from one exercise's modal into the next. Also resets
+// exerciseLogRevealed so the next exercise starts minimal (goal + video + pacing only) instead of
+// carrying over the previous exercise's already-revealed logging section.
 function advanceExerciseRpeFlow(){
   stopPacingTimer();
+  State.exerciseLogRevealed = false;
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   flow.index += 1;
@@ -1093,6 +1098,10 @@ Actions.startPacingTimer = function(durationSec){
     if(State.pacingTimer.secondsLeft<=0){
       State.pacingTimer.secondsLeft = 0;
       clearInterval(pacingIntervalId); pacingIntervalId = null;
+      // Finishing the timer (naturally or early) is the signal that the patient is done with this
+      // exercise, so reveal the logging section automatically -- they shouldn't need an extra tap
+      // on top of running the timer.
+      State.exerciseLogRevealed = true;
       render(); // finished: full re-render for the checkmark/"done" state change (buttons, color, text)
     } else {
       // Every other tick: patch just the ring's arc + number in place instead of a full render.
@@ -1129,6 +1138,7 @@ Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
 Actions.finishPacingTimerEarly = function(){
   if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
   if(State.pacingTimer) State.pacingTimer.secondsLeft = 0;
+  State.exerciseLogRevealed = true;
   render();
 };
 // Patient's chosen pacing length, in whole minutes (fractional allowed down to 0.5), carried over
@@ -1181,6 +1191,19 @@ Actions.reopenGoalAsk = function(){
   document.getElementById("goalAdjustFields").style.display = "none";
   document.getElementById("goalAsk").style.display = "block";
 };
+// Reveals the goal-confirmation/RPE logging section, hidden by default so the exercise screen
+// starts minimal (just the name, goal, video, and pacing ring -- not a wall of inputs before the
+// patient has even started). Direct DOM show/hide rather than a full render() so it doesn't
+// reload the embedded video iframe (see Actions.startPacingTimer's per-second tick for the same
+// concern). State.exerciseLogRevealed is still kept in sync so a later full render() -- e.g. when
+// the pacing timer finishes naturally -- doesn't re-collapse it.
+Actions.revealExerciseLog = function(){
+  State.exerciseLogRevealed = true;
+  var trigger = document.getElementById("exerciseLogTrigger");
+  var wrap = document.getElementById("exerciseLogWrap");
+  if(trigger) trigger.style.display = "none";
+  if(wrap) wrap.style.display = "block";
+};
 
 // ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
 // A patient with hand weakness or fatigue may find a tiny number-spinner or typing on a phone
@@ -1214,30 +1237,40 @@ Actions.speak = function(text){
   }catch(e){ /* speech synthesis unavailable/blocked -- silently skip, it's a nice-to-have */ }
 };
 
-// ---- Accessible Borg RPE entry (large tap-to-select buttons instead of typing a number) ----
-// Same rationale as the sets/reps steppers above: a row of big, color-banded buttons (green/amber/
-// red for low/moderate/high effort, not a clinical threshold -- just a visual grouping of the
-// existing 0-10 scale) is easier to hit precisely than a number input, especially one-handed or
-// with reduced grip strength. Mirrors the Yes/No check-in buttons' direct-DOM-manipulation pattern
+// ---- Accessible 0-10 scale entry (large tap-to-select buttons instead of typing a number) ----
+// Used for Borg RPE, pain, and fatigue alike -- all three are the same 0-10 scale shape, and in
+// all three a lower number is clinically milder/better, so the same green/amber/red banding
+// (not a clinical threshold -- just a visual grouping) applies consistently to each. A row of big
+// buttons is easier to hit precisely than a number input, especially one-handed or with reduced
+// grip strength. Mirrors the Yes/No check-in buttons' direct-DOM-manipulation pattern
 // (Actions.setCheckinConcern) rather than a full render per tap.
-Actions.selectRpe = function(btn, val){
+Actions.selectScaleValue = function(btn, fieldName, val){
   var form = btn.closest("form");
-  form.querySelector('input[name="rpe"]').value = val;
+  form.querySelector('input[name="'+fieldName+'"]').value = val;
   Array.prototype.forEach.call(btn.parentElement.querySelectorAll("button"), function(b){
     b.classList.remove("selected");
   });
   btn.classList.add("selected");
 };
-function renderRpeButtons(){
-  var html = '<input type="hidden" name="rpe">';
+function renderScaleButtons(fieldName, preselected){
+  var html = '<input type="hidden" name="'+fieldName+'" value="'+(preselected!=null?preselected:"")+'">';
   html += '<div class="rpe-grid">';
   for(var n=0;n<=10;n++){
     var band = n<=3?"rpe-low":(n<=6?"rpe-mid":"rpe-high");
-    html += '<button type="button" class="'+band+'" onclick="Actions.selectRpe(this,'+n+')">'+n+'</button>';
+    var isSelected = preselected!=null && Number(preselected)===n;
+    html += '<button type="button" class="'+band+(isSelected?" selected":"")+'" onclick="Actions.selectScaleValue(this,\''+fieldName+'\','+n+')">'+n+'</button>';
   }
   html += '</div>';
   return html;
 }
+// Plain-English anchors for the Borg RPE (rate of perceived exertion) scale -- these are the
+// standard published verbal descriptors for the Borg CR10 scale (0 "nothing at all" through 10
+// "maximal"), not an invented clinical threshold, included so a patient taps a number with some
+// sense of what it means rather than guessing at a bare 0-10 range.
+var BORG_RPE_LEGEND = '<p class="muted" style="font-size:12px;text-align:center;margin:4px 0 10px;line-height:1.5;">'+
+  '0 nothing at all &middot; 1–2 very light &middot; 3–4 light &middot; 5–6 moderate &middot; '+
+  '7–8 hard &middot; 9 very hard &middot; 10 maximal, couldn’t do more'+
+'</p>';
 
 // End-of-session wrap-up: whole-session Borg RPE plus pain/fatigue and the two follow-up
 // questions, all in one screen, submitted together once the workout itself is done. Finds or
@@ -1247,6 +1280,11 @@ function renderRpeButtons(){
 Actions.submitSessionWrapup = function(ev){
   ev.preventDefault();
   var f = ev.target;
+  // RPE/pain/fatigue all live on hidden inputs now (see renderScaleButtons) that HTML5
+  // "required" can't reliably enforce, so check them explicitly here instead.
+  if(f.rpe.value===""){ alert("Please tap a number for Borg RPE (how hard the session felt)."); return; }
+  if(f.pain.value===""){ alert("Please tap a number for your pain level right now."); return; }
+  if(f.fatigue.value===""){ alert("Please tap a number for your fatigue level right now."); return; }
   var patientId = State.pendingRpePrompt.patientId;
   var exerciseRpes = State.pendingRpePrompt.exerciseRpes;
   var p = getPatient(patientId);
@@ -1821,6 +1859,10 @@ function renderExerciseRpePrompt(){
     '</div>'+
     renderExerciseMedia(exercise.name, 420, true)+
     renderPacingRing()+
+    '<div id="exerciseLogTrigger" style="display:'+(State.exerciseLogRevealed?"none":"block")+';text-align:center;margin:14px 0 4px;">'+
+      '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
+    '</div>'+
+    '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
       '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
         '<button type="button" class="btn ghost" style="padding:4px 10px;font-size:12px;" onclick="Actions.toggleCounterAudio()">'+(State.counterAudioOn?"🔊 Spoken count: on":"🔇 Spoken count: off")+'</button>'+
@@ -1854,12 +1896,13 @@ function renderExerciseRpePrompt(){
         '</div>'+
         '<p style="text-align:center;margin-top:-4px;"><a href="#" onclick="Actions.reopenGoalAsk(); return false;">← Back</a></p>'+
       '</div>'+
-      '<div class="field"><label>Borg RPE Scale (0–10) — how hard did that feel?</label>'+renderRpeButtons()+'</div>'+
-      '<div class="row" style="justify-content:space-between;margin-top:10px;">'+
-        '<button type="button" class="btn ghost" onclick="Actions.skipExerciseRpe()">Didn’t do this one</button>'+
+      '<div class="field"><label>Borg RPE Scale — how hard did that feel, from 0 (no effort at all) to 10 (the hardest you could possibly go)?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
       '</div>'+
     '</form>'+
+    '</div>'+
+    '<p style="text-align:center;margin-top:12px;"><a href="#" onclick="Actions.skipExerciseRpe(); return false;">Didn’t do this one</a></p>'+
   '</div></div>';
 }
 function renderSessionWrapupPrompt(){
@@ -1870,11 +1913,9 @@ function renderSessionWrapupPrompt(){
     '<h2>How did the whole session feel?</h2>'+
     '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
     '<form onsubmit="Actions.submitSessionWrapup(event)">'+
-      '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" required autofocus></div>'+
-      '<div class="grid">'+
-        '<div class="field"><label>Pain now (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>'+
-        '<div class="field"><label>Fatigue now (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>'+
-      '</div>'+
+      '<div class="field"><label>Borg RPE Scale — overall, how hard did the whole session feel, from 0 (no effort at all) to 10 (the hardest you could possibly go)?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field"><label>Pain now (0–10)</label>'+renderScaleButtons("pain", todayLog.pain)+'</div>'+
+      '<div class="field"><label>Fatigue now (0–10)</label>'+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
       '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>'+
       '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
