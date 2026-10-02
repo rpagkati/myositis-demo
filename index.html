@@ -806,11 +806,11 @@ var State = {
   sharingError:null,
   pdfReview:null,
   pdfError:null,
-  exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after a completed session, before the whole-session Borg RPE ask
+  exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
-  pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before the overall-session Borg RPE is collected
-  postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once Borg RPE has been submitted
+  pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
+  postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once the session wrap-up has been submitted
 };
 
 function el(id){ return document.getElementById(id); }
@@ -958,37 +958,39 @@ Actions.toggleFlare = function(patientId){
   var p = getPatient(patientId); p.inFlare = !p.inFlare; saveData(); render();
 };
 
+// Daily Log now only covers "how are you feeling" on its own -- it no longer doubles as the
+// trigger for a workout (see Actions.startWorkout for that). Saving here never touches
+// completed/rpe/exerciseRpes, so it's safe to submit before OR after a workout already logged
+// today: it only ever updates the feeling fields on whatever entry exists for today, creating one
+// (completed:false) if this is the first thing logged today.
 Actions.saveDailyLog = function(ev){
   ev.preventDefault();
   var f = ev.target;
   var p = getPatient(State.patientId);
   var date = todayISO();
-  // Pain/fatigue (and the two follow-up questions below) are asked before a session, but are
-  // never gated behind the "completed" checkbox -- a patient reports how they're doing whether
-  // or not they end up exercising that day.
-  var completed = f.completed.checked;
-  var entry = {
-    date:date, logged:true, completed:completed,
-    pain: Number(f.pain.value), fatigue: Number(f.fatigue.value),
-    postExerciseRelated: f.postExerciseRelated.checked,
-    adlImpact: f.adlImpact.checked
-  };
-  var existingIdx = p.dailyLogs.findIndex(function(l){ return l.date===date; });
-  if(existingIdx>=0) p.dailyLogs[existingIdx]=entry; else p.dailyLogs.push(entry);
+  var existing = p.dailyLogs.find(function(l){ return l.date===date; });
+  var entry = existing || {date:date, logged:true, completed:false};
+  entry.logged = true;
+  entry.pain = Number(f.pain.value);
+  entry.fatigue = Number(f.fatigue.value);
+  entry.postExerciseRelated = f.postExerciseRelated.checked;
+  entry.adlImpact = f.adlImpact.checked;
+  if(!existing) p.dailyLogs.push(entry);
   saveData();
+  render();
+};
 
-  if(completed){
-    // Borg RPE isn't collected here. It's asked immediately: once per exercise, right after
-    // marking the session complete, walking through the patient's current-phase exercises one at
-    // a time -- reps/sets completed, then Borg RPE (see renderExerciseRpePrompt/
-    // Actions.submitExerciseRpe) -- then once more for the session as a whole
-    // (renderBorgRpePrompt/Actions.submitBorgRpe).
-    if(p.phaseDosage && p.phaseDosage.length){
-      State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
-    } else {
-      State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
-    }
-    stopPacingTimer();
+// Entry point for starting today's exercise session -- from the Dashboard's primary CTA, or the
+// shortcut on the Daily Log page. Jumps straight into the per-exercise walkthrough (picture,
+// video, pacing timer, sets/reps, Borg RPE) with no form to fill out first; pain/fatigue and the
+// two follow-up questions are asked once, at the end, as part of Actions.submitSessionWrapup --
+// see the per-exercise flow below for how that walkthrough itself works.
+Actions.startWorkout = function(patientId){
+  var p = getPatient(patientId);
+  if(p.phaseDosage && p.phaseDosage.length){
+    State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
+  } else {
+    State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
   }
   render();
 };
@@ -1071,16 +1073,29 @@ Actions.setPacingDuration = function(minutes){
   render();
 };
 
-Actions.submitBorgRpe = function(ev){
+// End-of-session wrap-up: whole-session Borg RPE plus pain/fatigue and the two follow-up
+// questions, all in one screen, submitted together once the workout itself is done. Finds or
+// creates today's dailyLogs entry -- a workout started via Actions.startWorkout may not have one
+// yet, since nothing about the session is saved until this final step (consistent with how the
+// per-exercise sets/reps/RPE data was already only ever saved here, not mid-walkthrough).
+Actions.submitSessionWrapup = function(ev){
   ev.preventDefault();
   var f = ev.target;
   var patientId = State.pendingRpePrompt.patientId;
   var exerciseRpes = State.pendingRpePrompt.exerciseRpes;
   var p = getPatient(patientId);
   var date = todayISO();
-  var entry = p.dailyLogs.find(function(l){ return l.date===date; });
+  var existing = p.dailyLogs.find(function(l){ return l.date===date; });
+  var entry = existing || {date:date, logged:true};
+  entry.logged = true;
+  entry.completed = true;
+  entry.pain = Number(f.pain.value);
+  entry.fatigue = Number(f.fatigue.value);
+  entry.postExerciseRelated = f.postExerciseRelated.checked;
+  entry.adlImpact = f.adlImpact.checked;
   entry.rpe = Number(f.rpe.value);
   entry.exerciseRpes = exerciseRpes;
+  if(!existing) p.dailyLogs.push(entry);
 
   var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
   State.pendingRpePrompt = null;
@@ -1362,12 +1377,12 @@ function renderPatientRole(){
     html += renderCheckinModal(p, missed);
   }
 
-  // Immediately after marking a session complete: walk through each exercise asking Borg RPE,
-  // one at a time, before asking for the overall session's Borg RPE.
+  // Started via Actions.startWorkout: walk through each exercise asking Borg RPE, one at a time,
+  // then the whole-session wrap-up (overall Borg RPE + pain/fatigue + follow-up questions).
   if(State.exerciseRpeFlow){
     html += renderExerciseRpePrompt();
   } else if(State.pendingRpePrompt){
-    html += renderBorgRpePrompt();
+    html += renderSessionWrapupPrompt();
   }
 
   // Post-session encouragement modal (shown once Borg RPE has been submitted)
@@ -1427,13 +1442,24 @@ function renderPatientDashboard(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); });
   var recentLogs = p.dailyLogs.filter(function(l){return l.logged;}).slice(-7);
   var adherenceNum = recentLogs.filter(function(l){return l.completed;}).length;
+  var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
   var html = '<div class="card"><h2>Welcome back, '+escapeHtml(p.name)+'</h2>';
   html += '<p class="muted">Diagnosis subtype (demo field): '+escapeHtml(p.diagnosisSubtype)+' &middot; Target sessions: '+p.sessionsPerWeek+'/week &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p>';
-  if(!todayLog){
-    html += '<div class="alert alert-info">You haven’t logged today yet. <button class="btn secondary" style="margin-left:8px" onclick="Actions.setPatientView(\'log\')">Log today</button></div>';
+
+  // Primary call-to-action: starting today's workout is the main thing a patient opens this app
+  // to do, so it belongs front-and-center on the landing screen, not buried under Daily Log.
+  if(todayLog && todayLog.completed){
+    html += '<div class="alert alert-success">Today’s workout is logged. Thank you!</div>';
+  } else if(canExercise){
+    html += '<div style="text-align:center;padding:20px 10px;background:var(--primary-bg);border-radius:10px;margin-bottom:12px;">'+
+      '<p style="margin:0 0 10px;font-weight:600;">Ready for today’s session?</p>'+
+      '<button class="btn" style="padding:12px 28px;font-size:16px;" onclick="Actions.startWorkout(\''+p.id+'\')">▶ Start Today’s Workout</button>'+
+    '</div>';
+    html += '<p class="muted" style="text-align:center;margin-top:-4px;">Not exercising today? <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">Just log how you’re feeling</a></p>';
   } else {
-    html += '<div class="alert alert-success">Today’s entry is logged. Thank you!</div>';
+    html += '<div class="alert alert-info">Exercise is on hold right now — see the alert above. You can still <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">log how you’re feeling</a>.</div>';
   }
+
   html += '<p>Last 7 logged days: <strong>'+adherenceNum+'</strong> of <strong>'+recentLogs.length+'</strong> completed.</p>';
   html += '</div>';
   return html;
@@ -1441,18 +1467,21 @@ function renderPatientDashboard(p){
 
 function renderPatientLog(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
+  var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
+  if(todayLog.completed){
+    html += '<div class="alert alert-success">You’ve already logged today’s workout. The fields below update how you’re feeling, not your session.</div>';
+  } else if(canExercise){
+    html += '<p class="muted" style="margin-top:0;">Ready to exercise? <button type="button" class="btn secondary" onclick="Actions.startWorkout(\''+p.id+'\')">▶ Start Today’s Workout</button> No need to fill in the form below first.</p>';
+  }
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
   html += '<div class="grid">';
-  html += '<div class="field"><label>Pain before session (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
-  html += '<div class="field"><label>Fatigue before session (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
+  html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
   html += '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
   html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
-
-  html += '<div class="field"><label><input type="checkbox" name="completed" id="completedBox" '+(todayLog.completed?"checked":"")+'> I completed my exercise session today</label></div>';
-  html += '<p class="muted">If checked, you’ll be asked to rate each exercise (and then the whole session) with the Borg RPE Scale right after saving.</p>';
 
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
@@ -1618,12 +1647,21 @@ function renderExerciseRpePrompt(){
     '</form>'+
   '</div></div>';
 }
-function renderBorgRpePrompt(){
+function renderSessionWrapupPrompt(){
+  var flow = State.pendingRpePrompt;
+  var p = getPatient(flow.patientId);
+  var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
   return '<div class="modal-overlay"><div class="modal">'+
     '<h2>How did the whole session feel?</h2>'+
-    '<p class="muted">Rate your overall effort using the Borg RPE Scale.</p>'+
-    '<form onsubmit="Actions.submitBorgRpe(event)">'+
+    '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
+    '<form onsubmit="Actions.submitSessionWrapup(event)">'+
       '<div class="field"><label>Borg RPE Scale (0–10)</label><input type="number" name="rpe" min="0" max="10" required autofocus></div>'+
+      '<div class="grid">'+
+        '<div class="field"><label>Pain now (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>'+
+        '<div class="field"><label>Fatigue now (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>'+
+      '</div>'+
+      '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>'+
+      '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">Submit</button>'+
       '</div>'+
