@@ -525,6 +525,20 @@ function ensurePhaseFields(patient){
   if(patient.romConfirmed==null) patient.romConfirmed = false;
   if(!Array.isArray(patient.phaseDosage)) patient.phaseDosage = buildPhaseDosageTemplate(patient, patient.phase);
 }
+// Backfills each dailyLogs entry's `sessions` array -- added to support more than one completed
+// workout on the same calendar day (see Actions.startWorkout/submitSessionWrapup). Seed data (and
+// any existing localStorage data saved by an earlier version of this app) still only carries a
+// single rpe/exerciseRpes pair directly on the entry; this wraps that into a one-item sessions
+// array and removes the old fields so every other part of the app only ever reads sessions.
+// pain/fatigue/postExerciseRelated/adlImpact stay on the entry itself -- they represent the most
+// recently reported feeling that day, not a specific session.
+function ensureSessionsField(patient){
+  patient.dailyLogs.forEach(function(l){
+    if(Array.isArray(l.sessions)) return;
+    l.sessions = (l.completed && l.rpe!=null) ? [{rpe:l.rpe, exerciseRpes:l.exerciseRpes||[]}] : [];
+    delete l.rpe; delete l.exerciseRpes;
+  });
+}
 function loadData(){
   var raw = localStorage.getItem(STORAGE_KEY);
   var data = null;
@@ -536,12 +550,14 @@ function loadData(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
   data.patients.forEach(ensurePhaseFields);
+  data.patients.forEach(ensureSessionsField);
   return data;
 }
 function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(Data)); }
 function resetDemoData(){
   if(!confirm("Reset all demo data back to the seeded starting state? This cannot be undone.")) return;
   Data = buildSeedData();
+  Data.patients.forEach(ensureSessionsField);
   saveData();
   State.patientId = Data.patients[0].id;
   State.clinicianSelectedPatientId = null; State.clinicianView = "list";
@@ -703,13 +719,19 @@ Rules.programCompositionAudit = function(patient){
   });
 };
 
-// Rule 7: session-split suggestion
+// Rule 7: session-split suggestion -- operates on individual sessions, not days, now that a day
+// can hold more than one (see Actions.startWorkout/submitSessionWrapup): a patient doing two
+// easier sessions a day should read the same as one day with an equally easy single session, not
+// get double-counted or hidden by which day it landed on.
 Rules.sessionSplitSuggestion = function(patient){
-  var recent = patient.dailyLogs.filter(function(l){ return l.completed && l.rpe!=null; })
-    .slice().sort(function(a,b){ return a.date<b.date?-1:1; }).slice(-10);
-  if(recent.length<3) return {suggest:false, avgRpe:null, count:recent.length};
-  var mean = avg(recent.map(function(l){ return l.rpe; }));
-  return {suggest: mean>5, avgRpe:mean, count:recent.length};
+  var recentDays = patient.dailyLogs.filter(function(l){ return l.sessions && l.sessions.length; })
+    .slice().sort(function(a,b){ return a.date<b.date?-1:1; });
+  var recentSessions = [];
+  recentDays.forEach(function(l){ l.sessions.forEach(function(s){ recentSessions.push(s.rpe); }); });
+  recentSessions = recentSessions.slice(-10);
+  if(recentSessions.length<3) return {suggest:false, avgRpe:null, count:recentSessions.length};
+  var mean = avg(recentSessions);
+  return {suggest: mean>5, avgRpe:mean, count:recentSessions.length};
 };
 
 // IBM-specific: IBMFRS meaningful-decline flag. Higher IBMFRS totals are better, so a decline is a
@@ -969,7 +991,7 @@ Actions.saveDailyLog = function(ev){
   var p = getPatient(State.patientId);
   var date = todayISO();
   var existing = p.dailyLogs.find(function(l){ return l.date===date; });
-  var entry = existing || {date:date, logged:true, completed:false};
+  var entry = existing || {date:date, logged:true, completed:false, sessions:[]};
   entry.logged = true;
   entry.pain = Number(f.pain.value);
   entry.fatigue = Number(f.fatigue.value);
@@ -1086,20 +1108,21 @@ Actions.submitSessionWrapup = function(ev){
   var p = getPatient(patientId);
   var date = todayISO();
   var existing = p.dailyLogs.find(function(l){ return l.date===date; });
-  var entry = existing || {date:date, logged:true};
+  var entry = existing || {date:date, logged:true, sessions:[]};
+  if(!Array.isArray(entry.sessions)) entry.sessions = [];
   entry.logged = true;
-  entry.completed = true;
   entry.pain = Number(f.pain.value);
   entry.fatigue = Number(f.fatigue.value);
   entry.postExerciseRelated = f.postExerciseRelated.checked;
   entry.adlImpact = f.adlImpact.checked;
-  entry.rpe = Number(f.rpe.value);
-  entry.exerciseRpes = exerciseRpes;
+  var session = {rpe: Number(f.rpe.value), exerciseRpes: exerciseRpes, loggedAt: nowISOTime()};
+  entry.sessions.push(session);
+  entry.completed = true;
   if(!existing) p.dailyLogs.push(entry);
 
   var advancedExerciseName = Rules.advancePhaseDosage(p, entry);
   State.pendingRpePrompt = null;
-  State.postSessionSummary = {patientId:p.id, rpe:entry.rpe, pain:entry.pain, fatigue:entry.fatigue, exerciseRpes:exerciseRpes, advancedExerciseName:advancedExerciseName};
+  State.postSessionSummary = {patientId:p.id, rpe:session.rpe, pain:entry.pain, fatigue:entry.fatigue, exerciseRpes:exerciseRpes, advancedExerciseName:advancedExerciseName, sessionNumber:entry.sessions.length};
 
   saveData(); render();
 };
@@ -1446,16 +1469,21 @@ function renderPatientDashboard(p){
   var html = '<div class="card"><h2>Welcome back, '+escapeHtml(p.name)+'</h2>';
   html += '<p class="muted">Diagnosis subtype (demo field): '+escapeHtml(p.diagnosisSubtype)+' &middot; Target sessions: '+p.sessionsPerWeek+'/week &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p>';
 
-  // Primary call-to-action: starting today's workout is the main thing a patient opens this app
-  // to do, so it belongs front-and-center on the landing screen, not buried under Daily Log.
-  if(todayLog && todayLog.completed){
-    html += '<div class="alert alert-success">Today’s workout is logged. Thank you!</div>';
-  } else if(canExercise){
+  // Primary call-to-action: starting a workout is the main thing a patient opens this app to do,
+  // so it belongs front-and-center on the landing screen, not buried under Daily Log. Some
+  // patients' programs call for more than one session a day, so the button stays available (just
+  // relabeled) after a session is already logged today -- rather than disappearing, which left no
+  // way to start a second one.
+  var sessionCount = (todayLog && todayLog.sessions) ? todayLog.sessions.length : 0;
+  if(canExercise){
+    if(sessionCount>0){
+      html += '<div class="alert alert-success">'+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. Thank you!</div>';
+    }
     html += '<div style="text-align:center;padding:20px 10px;background:var(--primary-bg);border-radius:10px;margin-bottom:12px;">'+
-      '<p style="margin:0 0 10px;font-weight:600;">Ready for today’s session?</p>'+
-      '<button class="btn" style="padding:12px 28px;font-size:16px;" onclick="Actions.startWorkout(\''+p.id+'\')">▶ Start Today’s Workout</button>'+
+      '<p style="margin:0 0 10px;font-weight:600;">'+(sessionCount>0?"Doing another session today?":"Ready for today’s session?")+'</p>'+
+      '<button class="btn" style="padding:12px 28px;font-size:16px;" onclick="Actions.startWorkout(\''+p.id+'\')">▶ '+(sessionCount>0?"Start Another Session":"Start Today’s Workout")+'</button>'+
     '</div>';
-    html += '<p class="muted" style="text-align:center;margin-top:-4px;">Not exercising today? <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">Just log how you’re feeling</a></p>';
+    html += '<p class="muted" style="text-align:center;margin-top:-4px;">Not exercising'+(sessionCount>0?" again":"")+' today? <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">Just log how you’re feeling</a></p>';
   } else {
     html += '<div class="alert alert-info">Exercise is on hold right now — see the alert above. You can still <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">log how you’re feeling</a>.</div>';
   }
@@ -1468,11 +1496,13 @@ function renderPatientDashboard(p){
 function renderPatientLog(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
   var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
+  var sessionCount = todayLog.sessions ? todayLog.sessions.length : 0;
   var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
-  if(todayLog.completed){
-    html += '<div class="alert alert-success">You’ve already logged today’s workout. The fields below update how you’re feeling, not your session.</div>';
-  } else if(canExercise){
-    html += '<p class="muted" style="margin-top:0;">Ready to exercise? <button type="button" class="btn secondary" onclick="Actions.startWorkout(\''+p.id+'\')">▶ Start Today’s Workout</button> No need to fill in the form below first.</p>';
+  if(sessionCount>0){
+    html += '<div class="alert alert-success">'+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. The fields below update how you’re feeling, not your sessions.</div>';
+  }
+  if(canExercise){
+    html += '<p class="muted" style="margin-top:0;">'+(sessionCount>0?"Doing another session?":"Ready to exercise?")+' <button type="button" class="btn secondary" onclick="Actions.startWorkout(\''+p.id+'\')">▶ '+(sessionCount>0?"Start Another Session":"Start Today’s Workout")+'</button> No need to fill in the form below first.</p>';
   }
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
@@ -1486,16 +1516,22 @@ function renderPatientLog(p){
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Completed</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Overall Borg RPE</th><th>Per-exercise (sets×reps, RPE)</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Sessions</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Session details (RPE, sets×reps)</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
-    var exerciseSummary = (l.exerciseRpes && l.exerciseRpes.length)
-      ? l.exerciseRpes.map(function(r){ return r.name+" "+r.setsCompleted+"×"+r.repsCompleted+" RPE"+r.rpe; }).join(", ")
+    var sessions = l.sessions || [];
+    var detailHtml = sessions.length
+      ? sessions.map(function(s, i){
+          var exerciseSummary = (s.exerciseRpes && s.exerciseRpes.length)
+            ? s.exerciseRpes.map(function(r){ return r.name+" "+r.setsCompleted+"×"+r.repsCompleted+" RPE"+r.rpe; }).join(", ")
+            : "—";
+          var prefix = sessions.length>1 ? "Session "+(i+1)+" (RPE "+s.rpe+"): " : "RPE "+s.rpe+": ";
+          return '<div>'+escapeHtml(prefix+exerciseSummary)+'</div>';
+        }).join("")
       : "—";
-    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(l.completed?"Yes":"No")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td>'+
+    html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(sessions.length||"—")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td>'+
       '<td>'+(l.postExerciseRelated==null?"—":(l.postExerciseRelated?"Yes":"No"))+'</td>'+
       '<td>'+(l.adlImpact==null?"—":(l.adlImpact?"Yes":"No"))+'</td>'+
-      '<td>'+(l.rpe!=null?l.rpe:"—")+'</td>'+
-      '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escapeHtml(exerciseSummary)+'">'+escapeHtml(exerciseSummary)+'</td></tr>';
+      '<td style="max-width:260px;">'+detailHtml+'</td></tr>';
   });
   html += '</table></div>';
   return html;
@@ -1674,6 +1710,9 @@ function renderPostSessionModal(){
   var check = Rules.checkPhaseAdvancement(p);
   var completeCount = p.phaseDosage.filter(function(d){ return d.currentSets>=d.targetSets; }).length;
   var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
+  if(summary.sessionNumber>1){
+    html += '<p class="muted">That’s session '+summary.sessionNumber+' today.</p>';
+  }
   html += '<p>Overall Borg RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Pain <strong>'+summary.pain+'</strong> &middot; Fatigue <strong>'+summary.fatigue+'</strong></p>';
   if(summary.exerciseRpes && summary.exerciseRpes.length){
     html += '<h3>Per-exercise results</h3><ul class="criteria-list">'+summary.exerciseRpes.map(function(r){
@@ -1821,8 +1860,13 @@ function renderPatientTrends(p){
   html += '<p>Overall adherence: <strong>'+pct+'%</strong> ('+completedRecent.length+' of '+loggedRecent.length+' logged days completed)</p></div>';
 
   html += '<div class="card"><h2>RPE / Pain / Fatigue over time</h2>';
+  // RPE is plotted per session, not per day, now that a day can hold more than one (a day with
+  // two sessions contributes two points at that date) -- pain/fatigue stay per-day, since they
+  // represent the most recently reported feeling that day rather than a specific session.
+  var rpePoints = [];
+  p.dailyLogs.forEach(function(l){ (l.sessions||[]).forEach(function(s){ rpePoints.push({date:l.date, value:s.rpe}); }); });
   var series = [
-    {name:"RPE", color:"#2563a6", points: p.dailyLogs.filter(function(l){return l.rpe!=null;}).map(function(l){return {date:l.date,value:l.rpe};})},
+    {name:"RPE", color:"#2563a6", points: rpePoints},
     {name:"Pain", color:"#b3241c", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.pain};})},
     {name:"Fatigue", color:"#9a6b00", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.fatigue};})}
   ];
