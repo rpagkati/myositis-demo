@@ -100,12 +100,17 @@
   .stepper button.plus{background:var(--success);border-color:var(--success);color:#fff;}
   .stepper button.minus{background:#fff;}
   .stepper input{width:64px;text-align:center;font-size:24px;font-weight:800;padding:8px 4px;}
-  .rpe-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px;}
-  .rpe-grid button{padding:10px 0;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:16px;font-weight:700;cursor:pointer;color:var(--text);}
+  .rpe-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-top:6px;}
+  .rpe-grid button{padding:7px 0;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--text);}
   .rpe-grid button.rpe-low{background:var(--success-bg);border-color:var(--success);}
   .rpe-grid button.rpe-mid{background:var(--warning-bg);border-color:var(--warning);}
   .rpe-grid button.rpe-high{background:var(--danger-bg);border-color:var(--danger);}
-  .rpe-grid button.selected{outline:3px solid var(--primary);outline-offset:1px;}
+  .rpe-grid button.selected{outline:2px solid var(--primary);outline-offset:1px;}
+  .rpe-chip-row{display:flex;justify-content:center;gap:6px;margin:4px 0 8px;flex-wrap:wrap;}
+  .rpe-chip{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap;}
+  .rpe-chip.rpe-low{background:var(--success-bg);border-color:var(--success);color:var(--success);}
+  .rpe-chip.rpe-mid{background:var(--warning-bg);border-color:var(--warning);color:var(--warning);}
+  .rpe-chip.rpe-high{background:var(--danger-bg);border-color:var(--danger);color:var(--danger);}
   .lib-item{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
   .lib-item .region{font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase;}
   .toggle-row{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
@@ -1254,12 +1259,14 @@ function renderScaleButtons(fieldName, preselected){
 }
 // Plain-English anchors for the Borg RPE (rate of perceived exertion) scale -- these are the
 // standard published verbal descriptors for the Borg CR10 scale (0 "nothing at all" through 10
-// "maximal"), not an invented clinical threshold, included so a patient taps a number with some
-// sense of what it means rather than guessing at a bare 0-10 range.
-var BORG_RPE_LEGEND = '<p class="muted" style="font-size:12px;text-align:center;margin:4px 0 10px;line-height:1.5;">'+
-  '0 nothing at all &middot; 1–2 very light &middot; 3–4 light &middot; 5–6 moderate &middot; '+
-  '7–8 hard &middot; 9 very hard &middot; 10 maximal, couldn’t do more'+
-'</p>';
+// "maximal"), grouped into the same 3 color bands as the number buttons below (see .rpe-low/
+// .rpe-mid/.rpe-high) instead of one long sentence, so a patient can match a button's color to
+// its meaning at a glance rather than having to cross-reference dense text above 11 buttons.
+var BORG_RPE_LEGEND = '<div class="rpe-chip-row">'+
+  '<span class="rpe-chip rpe-low" title="0 nothing at all · 1–2 very light · 3 light">0–3 Light</span>'+
+  '<span class="rpe-chip rpe-mid" title="4 light-moderate · 5–6 moderate">4–6 Moderate</span>'+
+  '<span class="rpe-chip rpe-high" title="7–8 hard · 9 very hard · 10 maximal, couldn’t do more">7–10 Hard</span>'+
+'</div>';
 
 // End-of-session wrap-up: whole-session Borg RPE plus pain/fatigue and the two follow-up
 // questions, all in one screen, submitted together once the workout itself is done. Finds or
@@ -1957,7 +1964,7 @@ function renderExerciseRpePrompt(){
         '</div>'+
         '<p style="text-align:center;margin-top:-4px;"><a href="#" onclick="Actions.reopenGoalAsk(); return false;">← Back</a></p>'+
       '</div>'+
-      '<div class="field"><label>Borg RPE Scale — how hard did that feel, from 0 (no effort at all) to 10 (the hardest you could possibly go)?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field"><label>Borg RPE Scale — how hard did that feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
       '</div>'+
@@ -1973,7 +1980,7 @@ function renderSessionWrapupPrompt(){
     '<h2>How did the whole session feel?</h2>'+
     '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
     '<form onsubmit="Actions.submitSessionWrapup(event)">'+
-      '<div class="field"><label>Borg RPE Scale — overall, how hard did the whole session feel, from 0 (no effort at all) to 10 (the hardest you could possibly go)?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field"><label>Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
       '<div class="field"><label>Pain now (0–10)</label>'+renderScaleButtons("pain", todayLog.pain)+'</div>'+
       '<div class="field"><label>Fatigue now (0–10)</label>'+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
       '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>'+
