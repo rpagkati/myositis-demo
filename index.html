@@ -1714,19 +1714,27 @@ function renderPhaseProgressionCard(p, clinicianMode){
 }
 // Asked once per exercise, immediately after the patient marks it done, before moving on to
 // the next one -- see Actions.saveDailyLog/submitExerciseRpe for how this walkthrough is driven.
-// Below the demo video sits a scrollable embed of the patient's actual home exercise program
-// PDF (home-exercise-program.pdf, alongside index.html at the repo root) -- the real written
-// instructions a PT would normally hand over on paper, kept in view the whole time the patient
-// is doing the exercise, since there's no clinician in the room to narrate it live. Deliberately
-// no "open in a new tab" link here -- in a PWA installed to the home screen (see the
-// apple-mobile-web-app-capable meta tag) there's no browser chrome to navigate back with, so a
-// new tab/window can strand the patient with no way back to the app. Viewing it inline, with
-// enough height to actually read it, is the only way in or out.
-function renderHomeProgramPdf(){
+// Below the demo video sits a still reference photo of someone actually performing this
+// exercise. Deliberately pulled from the SAME video playing above (YouTube's own thumbnail for
+// that exact video, via img.youtube.com -- no API key needed, standard practice for link
+// previews), rather than a separately sourced photo, so it's guaranteed to match the video
+// instead of risking a mismatched pose from a different source. Falls back to the schematic
+// pose illustration (EXERCISE_POSE_SVGS) for any exercise with no video yet, same fallback
+// renderExerciseMedia uses.
+function renderExercisePhoto(name){
+  var m = EXERCISE_MEDIA[name];
+  var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
+  var media;
+  if(ytId){
+    media = '<img src="https://img.youtube.com/vi/'+ytId+'/hqdefault.jpg" alt="'+escapeHtml(name)+' exercise photo" style="width:100%;display:block;border-radius:8px;">';
+  } else if(m && EXERCISE_POSE_SVGS[m.pose]){
+    media = EXERCISE_POSE_SVGS[m.pose];
+  } else {
+    media = '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No reference photo yet</div>';
+  }
   return '<div style="margin:14px 0;">'+
-    '<p class="muted" style="margin:0 0 6px;font-weight:700;font-size:13px;">📄 Home Exercise Program</p>'+
-    '<iframe src="home-exercise-program.pdf" title="Home exercise program PDF" '+
-      'style="width:100%;height:60vh;min-height:360px;border:1px solid var(--border);border-radius:8px;" loading="lazy"></iframe>'+
+    '<p class="muted" style="margin:0 0 6px;font-weight:700;font-size:13px;">📷 Exercise Photo Reference</p>'+
+    media+
   '</div>';
 }
 function renderExerciseRpePrompt(){
@@ -1743,14 +1751,13 @@ function renderExerciseRpePrompt(){
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
       '<p style="margin:2px 0 0;font-size:22px;font-weight:800;color:var(--primary-dark);">'+exercise.currentSets+' sets × '+exercise.targetReps+' reps</p>'+
     '</div>'+
-    // Sticky, not static: as the patient scrolls down to read the PDF below, the video stays
-    // pinned in view at the top of the modal (its own scroll container) instead of scrolling
-    // out of sight -- a small "mini player" that keeps playing while they read, rather than
-    // forcing a choice between watching and reading.
+    // Sticky, not static: if the modal needs to scroll (e.g. once the logging section below is
+    // revealed), the video stays pinned in view at the top of its own scroll container instead
+    // of scrolling out of sight -- a small "mini player" that keeps playing throughout.
     '<div style="position:sticky;top:0;z-index:3;background:#fff;padding-bottom:6px;">'+
       renderExerciseMedia(exercise.name, 420, true)+
     '</div>'+
-    renderHomeProgramPdf()+
+    renderExercisePhoto(exercise.name)+
     '<div id="exerciseLogTrigger" style="display:'+(!State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
     '</div>'+
