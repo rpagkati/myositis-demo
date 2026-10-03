@@ -1127,7 +1127,6 @@ Actions.exitWorkout = function(){
 // exerciseRpes at all (it just finds the first phaseDosage entry still below target), so skipping
 // one exercise's rating has no side effect on dosage progression either way.
 Actions.skipExercise = function(){
-  if(!confirm("Skip this exercise and move to the next one?")) return;
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   var exercise = p.phaseDosage[flow.index];
