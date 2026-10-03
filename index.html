@@ -1131,16 +1131,6 @@ function updatePacingRingDom(){
   if(label) label.textContent = mm+":"+(ss<10?"0":"")+ss;
 }
 Actions.resetPacingTimer = function(){ stopPacingTimer(); render(); };
-// Lets the patient stop early if they finish their sets/reps before the timer runs out, instead
-// of waiting it out. Unlike resetPacingTimer (which clears the ring back to the length picker),
-// this leaves the ring showing its completed/checkmark state so it's clear the set is done and
-// they can go straight to entering sets/reps/RPE below.
-Actions.finishPacingTimerEarly = function(){
-  if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
-  if(State.pacingTimer) State.pacingTimer.secondsLeft = 0;
-  State.exerciseLogRevealed = true;
-  render();
-};
 // Patient's chosen pacing length, in whole minutes (fractional allowed down to 0.5), carried over
 // to the next exercise's prompt so they don't have to re-pick it each time. Matches the slider's
 // own 0.5-10 min range (see renderPacingRing).
@@ -1195,17 +1185,20 @@ Actions.reopenGoalAsk = function(){
 // starts minimal (just the name, goal, video, and pacing ring -- not a wall of inputs before the
 // patient has even started), and the "Click when you're done" trigger that calls this only
 // renders once the patient has pressed "Start Exercising" (State.pacingTimer is set -- see
-// renderExerciseRpePrompt), so there's nothing to tap before they've actually begun. Direct DOM
-// show/hide rather than a full render() so it doesn't reload the embedded video iframe (see
-// Actions.startPacingTimer's per-second tick for the same concern). State.exerciseLogRevealed is
-// still kept in sync so a later full render() -- e.g. when the pacing timer finishes naturally --
-// doesn't re-collapse it.
+// renderExerciseRpePrompt), so there's nothing to tap before they've actually begun. Since the
+// trigger is only ever visible while the timer is still counting down (once it finishes
+// naturally, exerciseLogRevealed is already set automatically -- see Actions.startPacingTimer),
+// tapping it also doubles as "stop early": there's no separate stop-early button, since that
+// would just be a second way to say the same thing. A full render() (rather than the direct
+// DOM show/hide used elsewhere, e.g. Actions.setCheckinConcern) is fine here -- like starting or
+// resetting the timer, this is a deliberate one-time transition, not a per-second tick, so the
+// one-time video iframe reload it causes is expected and not the "blinking" bug that
+// updatePacingRingDom was built to avoid.
 Actions.revealExerciseLog = function(){
+  if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
+  if(State.pacingTimer) State.pacingTimer.secondsLeft = 0;
   State.exerciseLogRevealed = true;
-  var trigger = document.getElementById("exerciseLogTrigger");
-  var wrap = document.getElementById("exerciseLogWrap");
-  if(trigger) trigger.style.display = "none";
-  if(wrap) wrap.style.display = "block";
+  render();
 };
 
 // ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
@@ -1843,7 +1836,6 @@ function renderPacingRing(){
     '</svg>'+
     '<p class="muted">'+(done?"Nice pacing — log your set below.":"Move through your reps evenly until this finishes.")+'</p>'+
     '<div class="row" style="justify-content:center;gap:8px;">'+
-      (done ? "" : '<button type="button" class="btn secondary" onclick="Actions.finishPacingTimerEarly()">Done early — stop timer</button>')+
       '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">'+(done?"Start a new timer":"Reset timer")+'</button>'+
     '</div>'+
   '</div>';
