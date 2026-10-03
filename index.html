@@ -843,6 +843,7 @@ var State = {
   pdfReview:null,
   pdfError:null,
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
+  exerciseJustArrived:false, // one-shot flag, true only during the single render() that first shows a given exercise (session start, or advancing to the next one), so its video autoplays exactly once; see Actions.startWorkout/advanceExerciseRpeFlow/renderExerciseMedia
   counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
   exerciseLogRevealed:false, // whether the per-exercise goal/RPE logging section is showing yet -- stays false (hidden, minimal screen) until the patient signals they're done with that exercise; see Actions.revealExerciseLog, reset per exercise in Actions.startWorkout/advanceExerciseRpeFlow
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
@@ -1029,7 +1030,11 @@ Actions.startWorkout = function(patientId){
   } else {
     State.pendingRpePrompt = {patientId:p.id, exerciseRpes:[]};
   }
+  // Autoplay this exercise's video for exactly the one render that first shows it -- see
+  // renderExerciseMedia/exerciseJustArrived for why it's flipped back off immediately after.
+  State.exerciseJustArrived = true;
   render();
+  State.exerciseJustArrived = false;
 };
 
 // Advances the per-exercise walkthrough to the next exercise, or -- once every exercise has been
@@ -1042,7 +1047,11 @@ function advanceExerciseRpeFlow(){
   var p = getPatient(flow.patientId);
   flow.index += 1;
   if(flow.index < p.phaseDosage.length){
+    // Autoplay the next exercise's video for exactly this one render -- see Actions.startWorkout
+    // for why the flag is flipped back off immediately after.
+    State.exerciseJustArrived = true;
     render();
+    State.exerciseJustArrived = false;
   } else {
     State.pendingRpePrompt = {patientId:flow.patientId, exerciseRpes:flow.ratings};
     State.exerciseRpeFlow = null;
@@ -1714,11 +1723,15 @@ function renderPhaseProgressionCard(p, clinicianMode){
 }
 // Asked once per exercise, immediately after the patient marks it done, before moving on to
 // the next one -- see Actions.saveDailyLog/submitExerciseRpe for how this walkthrough is driven.
-// Below the demo video sits a still reference photo of someone actually performing this
-// exercise. Deliberately pulled from the SAME video playing above (YouTube's own thumbnail for
-// that exact video, via img.youtube.com -- no API key needed, standard practice for link
-// previews), rather than a separately sourced photo, so it's guaranteed to match the video
-// instead of risking a mismatched pose from a different source. Falls back to the schematic
+// Below the demo video sits a small row of still reference photos of someone actually
+// performing this exercise. Deliberately pulled from the SAME video playing above -- YouTube
+// auto-generates several numbered thumbnail frames per video (1.jpg/2.jpg/3.jpg, roughly its
+// 25%/50%/75% marks, via img.youtube.com, no API key needed, same technique the Exercise
+// Library already uses for its single thumbnail) -- rather than separately sourced photos, so
+// every photo shown is guaranteed to match the video instead of risking a mismatched pose from
+// a different source. Showing a few different frames (not just one) also means there's a much
+// better chance at least one of them actually shows the exercise mid-motion, since any single
+// frame can land on a title card or a talking-head intro instead. Falls back to the schematic
 // pose illustration (EXERCISE_POSE_SVGS) for any exercise with no video yet, same fallback
 // renderExerciseMedia uses.
 function renderExercisePhoto(name){
@@ -1726,7 +1739,12 @@ function renderExercisePhoto(name){
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
   var media;
   if(ytId){
-    media = '<img src="https://img.youtube.com/vi/'+ytId+'/hqdefault.jpg" alt="'+escapeHtml(name)+' exercise photo" style="width:100%;display:block;border-radius:8px;">';
+    media = '<div style="display:flex;gap:6px;">'+
+      [1,2,3].map(function(n){
+        return '<img src="https://img.youtube.com/vi/'+ytId+'/'+n+'.jpg" alt="'+escapeHtml(name)+' exercise photo '+n+'" loading="lazy" '+
+          'style="width:'+(100/3)+'%;display:block;border-radius:8px;object-fit:cover;aspect-ratio:4/3;">';
+      }).join('')+
+    '</div>';
   } else if(m && EXERCISE_POSE_SVGS[m.pose]){
     media = EXERCISE_POSE_SVGS[m.pose];
   } else {
@@ -1755,7 +1773,7 @@ function renderExerciseRpePrompt(){
     // revealed), the video stays pinned in view at the top of its own scroll container instead
     // of scrolling out of sight -- a small "mini player" that keeps playing throughout.
     '<div style="position:sticky;top:0;z-index:3;background:#fff;padding-bottom:6px;">'+
-      renderExerciseMedia(exercise.name, 420, true)+
+      renderExerciseMedia(exercise.name, 420, true, State.exerciseJustArrived)+
     '</div>'+
     renderExercisePhoto(exercise.name)+
     '<div id="exerciseLogTrigger" style="display:'+(!State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
@@ -1921,7 +1939,7 @@ function youTubeId(url){
   var m = url && url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
   return m ? m[1] : null;
 }
-function renderExerciseMedia(name, widthPx, embed){
+function renderExerciseMedia(name, widthPx, embed, autoplay){
   var m = EXERCISE_MEDIA[name];
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
   var media;
@@ -1930,10 +1948,16 @@ function renderExerciseMedia(name, widthPx, embed){
     // session screen, where there's only ever one video on screen at a time. The Exercise Library
     // list keeps the lighter thumbnail+link version below, since loading 16 live YouTube players
     // at once would be unnecessarily heavy for a browsable reference list.
+    // autoplay=1 only appears for the one render fired right as the patient arrives at this
+    // exercise (State.exerciseJustArrived -- see Actions.startWorkout/advanceExerciseRpeFlow),
+    // so the video starts playing the moment the session (or the next exercise) begins, without
+    // needing a separate tap to press play. That flag clears immediately after, so a later
+    // full render() of this same exercise (e.g. toggling the spoken-count setting) doesn't
+    // restart the video from 0:00.
     media = '<div style="position:relative;padding-top:56.25%;border-radius:8px;overflow:hidden;background:#000;">'+
-      '<iframe src="https://www.youtube.com/embed/'+ytId+'" title="'+escapeHtml(name)+' demo video" '+
+      '<iframe src="https://www.youtube.com/embed/'+ytId+(autoplay?"?autoplay=1":"")+'" title="'+escapeHtml(name)+' demo video" '+
         'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '+
-        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>'+
+        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; autoplay" allowfullscreen loading="lazy"></iframe>'+
     '</div>';
   } else if(ytId){
     media = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" style="display:block;position:relative;border-radius:8px;overflow:hidden;line-height:0;">'+
