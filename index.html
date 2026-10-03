@@ -1191,12 +1191,15 @@ Actions.reopenGoalAsk = function(){
   document.getElementById("goalAdjustFields").style.display = "none";
   document.getElementById("goalAsk").style.display = "block";
 };
-// Reveals the goal-confirmation/RPE logging section, hidden by default so the exercise screen
+// Reveals the goal-confirmation/RPE logging section. Hidden by default so the exercise screen
 // starts minimal (just the name, goal, video, and pacing ring -- not a wall of inputs before the
-// patient has even started). Direct DOM show/hide rather than a full render() so it doesn't
-// reload the embedded video iframe (see Actions.startPacingTimer's per-second tick for the same
-// concern). State.exerciseLogRevealed is still kept in sync so a later full render() -- e.g. when
-// the pacing timer finishes naturally -- doesn't re-collapse it.
+// patient has even started), and the "Click when you're done" trigger that calls this only
+// renders once the patient has pressed "Start Exercising" (State.pacingTimer is set -- see
+// renderExerciseRpePrompt), so there's nothing to tap before they've actually begun. Direct DOM
+// show/hide rather than a full render() so it doesn't reload the embedded video iframe (see
+// Actions.startPacingTimer's per-second tick for the same concern). State.exerciseLogRevealed is
+// still kept in sync so a later full render() -- e.g. when the pacing timer finishes naturally --
+// doesn't re-collapse it.
 Actions.revealExerciseLog = function(){
   State.exerciseLogRevealed = true;
   var trigger = document.getElementById("exerciseLogTrigger");
@@ -1859,7 +1862,7 @@ function renderExerciseRpePrompt(){
     '</div>'+
     renderExerciseMedia(exercise.name, 420, true)+
     renderPacingRing()+
-    '<div id="exerciseLogTrigger" style="display:'+(State.exerciseLogRevealed?"none":"block")+';text-align:center;margin:14px 0 4px;">'+
+    '<div id="exerciseLogTrigger" style="display:'+(State.pacingTimer && !State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
     '</div>'+
     '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
