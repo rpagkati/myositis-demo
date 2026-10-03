@@ -1717,14 +1717,16 @@ function renderPhaseProgressionCard(p, clinicianMode){
 // Below the demo video sits a scrollable embed of the patient's actual home exercise program
 // PDF (home-exercise-program.pdf, alongside index.html at the repo root) -- the real written
 // instructions a PT would normally hand over on paper, kept in view the whole time the patient
-// is doing the exercise, since there's no clinician in the room to narrate it live.
+// is doing the exercise, since there's no clinician in the room to narrate it live. Deliberately
+// no "open in a new tab" link here -- in a PWA installed to the home screen (see the
+// apple-mobile-web-app-capable meta tag) there's no browser chrome to navigate back with, so a
+// new tab/window can strand the patient with no way back to the app. Viewing it inline, with
+// enough height to actually read it, is the only way in or out.
 function renderHomeProgramPdf(){
   return '<div style="margin:14px 0;">'+
     '<p class="muted" style="margin:0 0 6px;font-weight:700;font-size:13px;">📄 Home Exercise Program</p>'+
     '<iframe src="home-exercise-program.pdf" title="Home exercise program PDF" '+
-      'style="width:100%;height:420px;border:1px solid var(--border);border-radius:8px;" loading="lazy"></iframe>'+
-    '<a href="home-exercise-program.pdf" target="_blank" rel="noopener noreferrer" class="btn secondary" '+
-      'style="display:block;text-align:center;margin-top:6px;padding:4px 8px;font-size:12px;">↗ Open PDF in a new tab</a>'+
+      'style="width:100%;height:60vh;min-height:360px;border:1px solid var(--border);border-radius:8px;" loading="lazy"></iframe>'+
   '</div>';
 }
 function renderExerciseRpePrompt(){
@@ -1741,7 +1743,13 @@ function renderExerciseRpePrompt(){
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
       '<p style="margin:2px 0 0;font-size:22px;font-weight:800;color:var(--primary-dark);">'+exercise.currentSets+' sets × '+exercise.targetReps+' reps</p>'+
     '</div>'+
-    renderExerciseMedia(exercise.name, 420, true)+
+    // Sticky, not static: as the patient scrolls down to read the PDF below, the video stays
+    // pinned in view at the top of the modal (its own scroll container) instead of scrolling
+    // out of sight -- a small "mini player" that keeps playing while they read, rather than
+    // forcing a choice between watching and reading.
+    '<div style="position:sticky;top:0;z-index:3;background:#fff;padding-bottom:6px;">'+
+      renderExerciseMedia(exercise.name, 420, true)+
+    '</div>'+
     renderHomeProgramPdf()+
     '<div id="exerciseLogTrigger" style="display:'+(!State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
