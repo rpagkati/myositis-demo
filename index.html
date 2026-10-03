@@ -138,6 +138,7 @@
 <footer>Myositis Home Companion · Client-side demo · Data lives only in this browser's local storage</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 <script>
 (function(){
 "use strict";
@@ -290,6 +291,7 @@ var EXERCISE_MEDIA = {
   "Mini Squat": {pose:"squat_mini", videoUrl:"https://www.youtube.com/watch?v=GIz1C3yfE1s", videoSource:"Ask Doctor Jo"},
   "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo"},
   "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo"},
+  "Straight leg raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo"},
   "Heel Raises": {pose:"heel_raise", videoUrl:"https://www.youtube.com/watch?v=J3qQrxPEhHA", videoSource:"Ask Doctor Jo"},
   "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:"https://www.youtube.com/watch?v=ohvR3shCV90", videoSource:"Ask Doctor Jo"},
   "Wall Push-up": {pose:"wall_pushup", videoUrl:"https://www.youtube.com/watch?v=AkNqpYt9Hjs", videoSource:"Bob & Brad"},
@@ -846,6 +848,7 @@ var State = {
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
+  pacingAwaitingVideo:false, // true from the moment "Start Exercising" is pressed (for an exercise with a demo video) until that video ends or is skipped -- the pacing timer itself doesn't start until then; see Actions.beginExercise/skipVideoThenPace
   counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
   exerciseLogRevealed:false, // whether the per-exercise goal/RPE logging section is showing yet -- stays false (hidden, minimal screen) until the patient signals they're done with that exercise; see Actions.revealExerciseLog, reset per exercise in Actions.startWorkout/advanceExerciseRpeFlow
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
@@ -1027,6 +1030,7 @@ Actions.saveDailyLog = function(ev){
 Actions.startWorkout = function(patientId){
   var p = getPatient(patientId);
   State.exerciseLogRevealed = false;
+  State.pacingAwaitingVideo = false;
   if(p.phaseDosage && p.phaseDosage.length){
     State.exerciseRpeFlow = {patientId:p.id, index:0, ratings:[]};
   } else {
@@ -1043,6 +1047,7 @@ Actions.startWorkout = function(patientId){
 function advanceExerciseRpeFlow(){
   stopPacingTimer();
   State.exerciseLogRevealed = false;
+  State.pacingAwaitingVideo = false;
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
   flow.index += 1;
@@ -1088,7 +1093,61 @@ Actions.exitWorkout = function(){
   State.exerciseRpeFlow = null;
   State.pendingRpePrompt = null;
   State.exerciseLogRevealed = false;
+  State.pacingAwaitingVideo = false;
   render();
+};
+
+// ---- Play the demo video first, then cue the patient to begin (Actions.startPacingTimer) ----
+// Pressing "Start Exercising" plays the video tutorial rather than jumping straight to the
+// countdown, so a patient who hasn't done this exercise before (or wants a refresher) gets the
+// demo first; the pacing timer -- and a spoken "begin" cue -- only start once the video finishes.
+// A patient who's done this exercise many times already (e.g. their 2nd or 3rd set) or simply
+// doesn't want to watch can tap "Skip video" to go straight to the countdown instead, so watching
+// is never a gate. Exercises with no demo video skip this step entirely and start pacing right away.
+var ytPlayer = null; // the current exercise's YT.Player instance, once the IFrame API is ready
+function currentExerciseVideoId(){
+  var flow = State.exerciseRpeFlow;
+  if(!flow) return null;
+  var p = getPatient(flow.patientId);
+  var exercise = p.phaseDosage[flow.index];
+  var m = EXERCISE_MEDIA[exercise.name];
+  return m && m.videoUrl ? youTubeId(m.videoUrl) : null;
+}
+Actions.beginExercise = function(){
+  if(!currentExerciseVideoId()){ Actions.startPacingTimer(); return; }
+  State.pacingAwaitingVideo = true;
+  render();
+  bindExerciseVideoPlayer();
+};
+// Binds the YouTube IFrame Player API to the now-autoplaying video iframe so the app finds out
+// when it ends. If the API script (loaded via a <script src="https://www.youtube.com/iframe_api">
+// tag) hasn't finished loading yet, queues this same call for its global ready callback instead
+// of failing silently -- the Skip button stays available the whole time regardless, so a slow or
+// blocked API load never traps the patient on the video screen.
+function bindExerciseVideoPlayer(){
+  if(!window.YT || !window.YT.Player){
+    window.onYouTubeIframeAPIReady = bindExerciseVideoPlayer;
+    return;
+  }
+  var el = document.getElementById("exerciseVideoFrame");
+  if(!el) return;
+  ytPlayer = new YT.Player("exerciseVideoFrame", {
+    events: { onStateChange: function(e){ if(e.data === YT.PlayerState.ENDED) Actions.videoEndedThenPace(); } }
+  });
+}
+// Reached either when the video ends naturally or via Actions.skipVideoThenPace -- either way,
+// this is the moment the patient should begin their reps, so start the pacing timer and read the
+// cue aloud (silently skipped if the spoken-count toggle is off, same as every other Actions.speak
+// call elsewhere in the app).
+Actions.videoEndedThenPace = function(){
+  State.pacingAwaitingVideo = false;
+  ytPlayer = null;
+  Actions.startPacingTimer();
+  Actions.speak("Begin your exercise now");
+};
+Actions.skipVideoThenPace = function(){
+  if(ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+  Actions.videoEndedThenPace();
 };
 
 // ---- Pacing timer (optional visual aid shown while doing an exercise's reps, not a hard gate --
@@ -1836,6 +1895,12 @@ function renderPhaseProgressionCard(p, clinicianMode){
 // Actions.recalcIbmfrsTotal/setCheckinConcern for the same "don't re-render mid-interaction"
 // pattern elsewhere in this file), committing to State only once the patient releases it.
 function renderPacingRing(){
+  if(State.pacingAwaitingVideo){
+    return '<div style="text-align:center;margin:10px 0;">'+
+      '<p class="muted" style="margin:0 0 10px;">🎥 Watch the demo above, then we’ll cue you to begin.</p>'+
+      '<button type="button" class="btn ghost" onclick="Actions.skipVideoThenPace()">Skip video — start exercising now</button>'+
+    '</div>';
+  }
   var t = State.pacingTimer;
   if(!t){
     var mins = State.pacingDurationSec/60;
@@ -1848,7 +1913,7 @@ function renderPacingRing(){
       '<div style="display:flex;justify-content:space-between;max-width:260px;margin:2px auto 16px;font-size:11px;color:var(--muted);">'+
         '<span>30 sec</span><span>10 min</span>'+
       '</div>'+
-      '<button type="button" class="btn success" style="padding:14px 36px;font-size:17px;" onclick="Actions.startPacingTimer()">▶ Start Exercising</button>'+
+      '<button type="button" class="btn success" style="padding:14px 36px;font-size:17px;" onclick="Actions.beginExercise()">▶ Start Exercising</button>'+
     '</div>';
   }
   var r = 50, c = 2*Math.PI*r;
@@ -1891,7 +1956,7 @@ function renderExerciseRpePrompt(){
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
       '<p style="margin:2px 0 0;font-size:22px;font-weight:800;color:var(--primary-dark);">'+exercise.currentSets+' sets × '+exercise.targetReps+' reps</p>'+
     '</div>'+
-    renderExerciseMedia(exercise.name, 420, true)+
+    renderExerciseMedia(exercise.name, 420, true, State.pacingAwaitingVideo)+
     renderPacingRing()+
     '<div id="exerciseLogTrigger" style="display:'+(State.pacingTimer && !State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
@@ -2057,7 +2122,7 @@ function youTubeId(url){
   var m = url && url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
   return m ? m[1] : null;
 }
-function renderExerciseMedia(name, widthPx, embed){
+function renderExerciseMedia(name, widthPx, embed, autoplay){
   var m = EXERCISE_MEDIA[name];
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
   var media;
@@ -2066,10 +2131,16 @@ function renderExerciseMedia(name, widthPx, embed){
     // session screen, where there's only ever one video on screen at a time. The Exercise Library
     // list keeps the lighter thumbnail+link version below, since loading 16 live YouTube players
     // at once would be unnecessarily heavy for a browsable reference list.
+    // enablejsapi=1 (plus the stable id) lets Actions.beginExercise's YouTube IFrame Player API
+    // binding detect when the video ends, so it can cue the patient to start their exercise --
+    // see the "Play the demo video first" block above Actions.startPacingTimer. autoplay=1 is
+    // only added once the patient has actually pressed "Start Exercising" (State.pacingAwaitingVideo),
+    // never on first load of the exercise screen.
+    var qs = "enablejsapi=1&playsinline=1&rel=0"+(autoplay?"&autoplay=1":"");
     media = '<div style="position:relative;padding-top:56.25%;border-radius:8px;overflow:hidden;background:#000;">'+
-      '<iframe src="https://www.youtube.com/embed/'+ytId+'" title="'+escapeHtml(name)+' demo video" '+
+      '<iframe id="exerciseVideoFrame" src="https://www.youtube.com/embed/'+ytId+'?'+qs+'" title="'+escapeHtml(name)+' demo video" '+
         'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '+
-        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>'+
+        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; autoplay" allowfullscreen loading="lazy"></iframe>'+
     '</div>';
   } else if(ytId){
     media = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" style="display:block;position:relative;border-radius:8px;overflow:hidden;line-height:0;">'+
