@@ -847,6 +847,7 @@ var State = {
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
   pacingTimer:null, // {totalSeconds, secondsLeft} optional visual pacing aid shown during the current exercise prompt; see Actions.startPacingTimer
   pacingDurationSec:180, // patient-adjustable pacing timer length, carried across exercises within a session; see Actions.setPacingDuration
+  pacingJustStarted:false, // one-shot flag, true only during the single render() that fires when Start Exercising is pressed, so the video embed autoplays exactly once; see Actions.startPacingTimer
   counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
   exerciseLogRevealed:false, // whether the per-exercise goal/RPE logging section is showing yet -- stays false (hidden, minimal screen) until the patient signals they're done with that exercise; see Actions.revealExerciseLog, reset per exercise in Actions.startWorkout/advanceExerciseRpeFlow
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
@@ -1124,25 +1125,58 @@ function tickPacingTimer(){
     updatePacingRingDom();
   }
 }
+// Sends a play/pause command directly to the exercise's embedded YouTube video via postMessage
+// (the documented "enablejsapi=1" protocol -- see renderExerciseMedia) without loading the full
+// YouTube IFrame API script, since all that's needed here is firing a command, not listening for
+// player events. Silently does nothing if there's no video embed on screen.
+function postToExerciseVideo(func){
+  var el = document.getElementById("exerciseVideoFrame");
+  if(!el || !el.contentWindow) return;
+  try{ el.contentWindow.postMessage(JSON.stringify({event:"command", func:func, args:[]}), "*"); }catch(e){ /* video not ready yet -- ignore */ }
+}
 Actions.startPacingTimer = function(durationSec){
   stopPacingTimer();
   if(durationSec==null) durationSec = State.pacingDurationSec;
   State.pacingTimer = {totalSeconds:durationSec, secondsLeft:durationSec, paused:false};
+  // pacingJustStarted makes the video embed autoplay for exactly this one render (see
+  // renderExerciseMedia) -- autoplay has to be a URL param set at iframe-load time to reliably
+  // start playback (a postMessage "playVideo" sent right after creating the iframe would race
+  // the embed's own startup and often get dropped), but leaving it on permanently would restart
+  // the video from 0:00 on every later re-render while the timer's running (e.g. when it finishes
+  // naturally). Flipping it back off immediately after this one render keeps it a one-shot.
+  State.pacingJustStarted = true;
   render();
+  State.pacingJustStarted = false;
   pacingIntervalId = setInterval(tickPacingTimer, 1000);
 };
-// Pauses the countdown in place (interval cleared, secondsLeft untouched) so a patient who needs
-// to answer the door or catch their breath doesn't have to lose their progress and restart the
-// whole timer via Reset. Resume picks the countdown back up from exactly where it left off.
+// Pauses the countdown AND the exercise video together in place -- no full render(), since that
+// would recreate the video iframe and restart it from 0:00 (the same "blinking" problem
+// updatePacingRingDom exists to avoid for per-second ticks). Direct DOM patching instead, same
+// pattern as Actions.setCheckinConcern/revealExerciseLog. Resume picks the countdown (and the
+// video) back up from exactly where they left off, so a patient who needs to answer the door or
+// catch their breath doesn't lose their progress.
 Actions.pausePacingTimer = function(){
   if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
-  if(State.pacingTimer) State.pacingTimer.paused = true;
-  render();
+  if(!State.pacingTimer) return;
+  State.pacingTimer.paused = true;
+  postToExerciseVideo("pauseVideo");
+  var arc = document.getElementById("pacingArc");
+  if(arc) arc.classList.remove("pacing-live");
+  var helper = document.getElementById("pacingHelperText");
+  if(helper) helper.textContent = "Paused — tap Resume whenever you’re ready to continue.";
+  var btn = document.getElementById("pacingPauseBtn");
+  if(btn){ btn.textContent = "▶ Resume"; btn.onclick = Actions.resumePacingTimer; }
 };
 Actions.resumePacingTimer = function(){
   if(!State.pacingTimer || State.pacingTimer.secondsLeft<=0) return;
   State.pacingTimer.paused = false;
-  render();
+  postToExerciseVideo("playVideo");
+  var arc = document.getElementById("pacingArc");
+  if(arc) arc.classList.add("pacing-live");
+  var helper = document.getElementById("pacingHelperText");
+  if(helper) helper.textContent = "Move through your reps evenly until this finishes.";
+  var btn = document.getElementById("pacingPauseBtn");
+  if(btn){ btn.textContent = "⏸ Pause"; btn.onclick = Actions.pausePacingTimer; }
   pacingIntervalId = setInterval(tickPacingTimer, 1000);
 };
 // Lightweight per-second update used while the pacing timer is running (see
@@ -1869,11 +1903,11 @@ function renderPacingRing(){
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
       '<text id="pacingLabel" x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
-    '<p class="muted">'+helperText+'</p>'+
+    '<p id="pacingHelperText" class="muted">'+helperText+'</p>'+
     '<div class="row" style="justify-content:center;gap:8px;">'+
       (done ? "" : (paused
-        ? '<button type="button" class="btn secondary" onclick="Actions.resumePacingTimer()">▶ Resume</button>'
-        : '<button type="button" class="btn secondary" onclick="Actions.pausePacingTimer()">⏸ Pause</button>'))+
+        ? '<button type="button" id="pacingPauseBtn" class="btn secondary" onclick="Actions.resumePacingTimer()">▶ Resume</button>'
+        : '<button type="button" id="pacingPauseBtn" class="btn secondary" onclick="Actions.pausePacingTimer()">⏸ Pause</button>'))+
       '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">'+(done?"Start a new timer":"Reset timer")+'</button>'+
     '</div>'+
   '</div>';
@@ -1892,7 +1926,7 @@ function renderExerciseRpePrompt(){
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
       '<p style="margin:2px 0 0;font-size:22px;font-weight:800;color:var(--primary-dark);">'+exercise.currentSets+' sets × '+exercise.targetReps+' reps</p>'+
     '</div>'+
-    renderExerciseMedia(exercise.name, 420, true)+
+    renderExerciseMedia(exercise.name, 420, true, State.pacingJustStarted)+
     renderPacingRing()+
     '<div id="exerciseLogTrigger" style="display:'+(State.pacingTimer && !State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
@@ -2058,7 +2092,7 @@ function youTubeId(url){
   var m = url && url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
   return m ? m[1] : null;
 }
-function renderExerciseMedia(name, widthPx, embed){
+function renderExerciseMedia(name, widthPx, embed, autoplay){
   var m = EXERCISE_MEDIA[name];
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
   var media;
@@ -2067,10 +2101,17 @@ function renderExerciseMedia(name, widthPx, embed){
     // session screen, where there's only ever one video on screen at a time. The Exercise Library
     // list keeps the lighter thumbnail+link version below, since loading 16 live YouTube players
     // at once would be unnecessarily heavy for a browsable reference list.
+    // enablejsapi=1 (plus the stable id) is what lets Actions.pausePacingTimer/resumePacingTimer
+    // postMessage play/pause commands to this exact video later, without loading the full
+    // YouTube IFrame API script -- see postToExerciseVideo. autoplay=1 only appears for the one
+    // render fired by Actions.startPacingTimer (State.pacingJustStarted), so the video starts
+    // playing the moment the patient presses "Start Exercising" and runs concurrently with the
+    // pacing ring, rather than needing a separate tap to begin.
+    var qs = "enablejsapi=1&playsinline=1&rel=0"+(autoplay?"&autoplay=1":"");
     media = '<div style="position:relative;padding-top:56.25%;border-radius:8px;overflow:hidden;background:#000;">'+
-      '<iframe src="https://www.youtube.com/embed/'+ytId+'" title="'+escapeHtml(name)+' demo video" '+
+      '<iframe id="exerciseVideoFrame" src="https://www.youtube.com/embed/'+ytId+'?'+qs+'" title="'+escapeHtml(name)+' demo video" '+
         'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '+
-        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>'+
+        'allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; autoplay" allowfullscreen loading="lazy"></iframe>'+
     '</div>';
   } else if(ytId){
     media = '<a href="'+escapeHtml(m.videoUrl)+'" target="_blank" rel="noopener noreferrer" style="display:block;position:relative;border-radius:8px;overflow:hidden;line-height:0;">'+
