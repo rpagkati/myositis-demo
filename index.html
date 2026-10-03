@@ -1198,6 +1198,20 @@ Actions.revealExerciseLog = function(){
   if(trigger) trigger.style.display = "none";
   if(wrap) wrap.style.display = "block";
 };
+// Shows/hides the session wrap-up's ADL-impact question and comment box -- only relevant once the
+// patient has said the pain/fatigue they just rated is actually related to the session, so there's
+// nothing to fill out otherwise. Direct DOM show/hide, same reasoning as Actions.revealExerciseLog
+// (no need for a full render() here, and it avoids losing anything already typed into the comment
+// box on a later unrelated re-render). Unchecking also clears the (now hidden) ADL checkbox so a
+// stale "yes, affecting my daily activities" can't get saved once the parent answer is "no".
+Actions.toggleWrapupFollowup = function(related){
+  var wrap = document.getElementById("wrapupFollowup");
+  if(wrap) wrap.style.display = related ? "block" : "none";
+  if(!related){
+    var adlBox = document.getElementById("adlImpactBox");
+    if(adlBox) adlBox.checked = false;
+  }
+};
 
 // ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
 // A patient with hand weakness or fatigue may find a tiny number-spinner or typing on a phone
@@ -1303,7 +1317,12 @@ Actions.submitSessionWrapup = function(ev){
   entry.pain = Number(f.pain.value);
   entry.fatigue = Number(f.fatigue.value);
   entry.postExerciseRelated = f.postExerciseRelated.checked;
-  entry.adlImpact = f.adlImpact.checked;
+  // adlImpact/exerciseConcerns only mean anything once postExerciseRelated is true (see
+  // Actions.toggleWrapupFollowup, which hides and clears that section otherwise) -- guard here too
+  // so a leftover comment typed before unchecking the parent box never gets saved as if it still
+  // applied.
+  entry.adlImpact = f.postExerciseRelated.checked && f.adlImpact.checked;
+  entry.exerciseConcerns = f.postExerciseRelated.checked ? f.exerciseConcerns.value.trim() : "";
   var session = {rpe: Number(f.rpe.value), exerciseRpes: exerciseRpes, loggedAt: nowISOTime()};
   entry.sessions.push(session);
   entry.completed = true;
@@ -1717,6 +1736,7 @@ function renderPatientLog(p){
           return '<div>'+escapeHtml(prefix+exerciseSummary)+'</div>';
         }).join("")
       : "—";
+    if(l.exerciseConcerns) detailHtml += '<div class="muted" style="margin-top:3px;">💬 '+escapeHtml(l.exerciseConcerns)+'</div>';
     html += '<tr><td>'+fmtDate(l.date)+'</td><td>'+(sessions.length||"—")+'</td><td>'+l.pain+'</td><td>'+l.fatigue+'</td>'+
       '<td>'+(l.postExerciseRelated==null?"—":(l.postExerciseRelated?"Yes":"No"))+'</td>'+
       '<td>'+(l.adlImpact==null?"—":(l.adlImpact?"Yes":"No"))+'</td>'+
@@ -1992,10 +2012,19 @@ function renderSessionWrapupPrompt(){
     '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
     '<form onsubmit="Actions.submitSessionWrapup(event)">'+
       '<div class="field"><label>Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
-      '<div class="field"><label>Pain now</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
-      '<div class="field"><label>Fatigue now</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
-      '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>'+
-      '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>'+
+      '<div class="field"><label>How much pain do you have right now?</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
+      '<div class="field"><label>How much fatigue do you have right now?</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
+      '<div class="field">'+
+        '<label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+' onchange="Actions.toggleWrapupFollowup(this.checked)"> Is any pain or fatigue above related to your last exercise session?</label>'+
+      '</div>'+
+      // Only asks the follow-up questions once there's something to follow up on -- nothing to
+      // fill out if the patient just said there's no lingering pain/fatigue from the session.
+      '<div id="wrapupFollowup" style="display:'+(todayLog.postExerciseRelated?"block":"none")+';border-left:2px solid var(--border);padding-left:10px;margin:-4px 0 12px 4px;">'+
+        '<div class="field" style="margin-top:10px;"><label><input type="checkbox" id="adlImpactBox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> Is this affecting your daily activities?</label></div>'+
+        '<div class="field"><label>Anything else to mention? <span class="muted" style="font-weight:400;font-size:12px;">(optional)</span></label>'+
+          '<textarea name="exerciseConcerns" rows="2" placeholder="e.g., which exercise, when it started, how it feels">'+escapeHtml(todayLog.exerciseConcerns||"")+'</textarea>'+
+        '</div>'+
+      '</div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">Submit</button>'+
       '</div>'+
