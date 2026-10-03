@@ -1134,6 +1134,23 @@ Actions.skipExercise = function(){
   advanceExerciseRpeFlow();
 };
 
+// Lets the patient step back to the exercise they just came from (misclicked "skip" or "done",
+// or want to redo it) -- only ever available once they're past the first exercise. flow.ratings
+// always holds exactly one entry per exercise already stepped through (pushed by
+// submitExerciseRpe/skipExercise right before the index advances), so the entry for the exercise
+// we're returning to is always the LAST one -- popping it discards that already-recorded result
+// and lets the patient log it again fresh, same as if they'd never gone past it.
+Actions.goToPreviousExercise = function(){
+  var flow = State.exerciseRpeFlow;
+  if(!flow || flow.index<=0) return;
+  flow.index -= 1;
+  flow.ratings.pop();
+  State.exerciseLogRevealed = false;
+  State.exerciseJustArrived = true;
+  render();
+  State.exerciseJustArrived = false;
+};
+
 // ---- Accessible sets/reps entry: "did you hit the goal?" Yes/No first, numbers only if needed ----
 // Defaults to the lowest-effort path: the number inputs already default to the exercise's goal
 // (see the form fields below), so confirming "Yes" just locks those defaults in -- zero typing,
@@ -1902,7 +1919,10 @@ function renderExerciseRpePrompt(){
     '<div id="exerciseLogTrigger" style="display:'+(!State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
     '</div>'+
-    '<p style="text-align:center;margin:6px 0 4px;"><a href="#" onclick="Actions.skipExercise(); return false;" style="font-size:13px;color:var(--muted);">Skip this exercise →</a></p>'+
+    '<div class="row" style="justify-content:'+(flow.index>0?"space-between":"center")+';margin:6px 0 4px;">'+
+      (flow.index>0 ? '<a href="#" onclick="Actions.goToPreviousExercise(); return false;" style="font-size:13px;color:var(--muted);">← Previous exercise</a>' : '')+
+      '<a href="#" onclick="Actions.skipExercise(); return false;" style="font-size:13px;color:var(--muted);">Skip this exercise →</a>'+
+    '</div>'+
     '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
       '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
