@@ -1077,6 +1077,19 @@ Actions.submitExerciseRpe = function(ev){
 Actions.skipExerciseRpe = function(){
   advanceExerciseRpeFlow();
 };
+// Lets the patient back out of the workout walkthrough entirely -- e.g. they started it by
+// mistake, got interrupted, or simply don't want to continue. Confirms first since exercises
+// already rated earlier in this walkthrough (flow.ratings) only get saved once the whole-session
+// wrap-up is submitted at the very end, so exiting early discards them -- same
+// irreversible-action pattern as the app's other confirm() prompts (e.g. Actions.resetDemoData).
+Actions.exitWorkout = function(){
+  if(!confirm("Exit this workout? Any exercises you’ve already logged this session won’t be saved.")) return;
+  stopPacingTimer();
+  State.exerciseRpeFlow = null;
+  State.pendingRpePrompt = null;
+  State.exerciseLogRevealed = false;
+  render();
+};
 
 // ---- Pacing timer (optional visual aid shown while doing an exercise's reps, not a hard gate --
 // the patient can fill in and submit the form without ever starting it). Re-renders once per
@@ -1087,31 +1100,49 @@ function stopPacingTimer(){
   if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
   State.pacingTimer = null;
 }
+// Shared per-second tick, used by both starting and resuming the timer (see
+// Actions.startPacingTimer/resumePacingTimer) so the "what happens each second" logic lives in
+// one place.
+function tickPacingTimer(){
+  if(!State.pacingTimer){ clearInterval(pacingIntervalId); pacingIntervalId=null; return; }
+  State.pacingTimer.secondsLeft -= 1;
+  if(State.pacingTimer.secondsLeft<=0){
+    State.pacingTimer.secondsLeft = 0;
+    clearInterval(pacingIntervalId); pacingIntervalId = null;
+    // Finishing the timer (naturally or early) is the signal that the patient is done with this
+    // exercise, so reveal the logging section automatically -- they shouldn't need an extra tap
+    // on top of running the timer.
+    State.exerciseLogRevealed = true;
+    render(); // finished: full re-render for the checkmark/"done" state change (buttons, color, text)
+  } else {
+    // Every other tick: patch just the ring's arc + number in place instead of a full render.
+    // A full render() here would replace the embedded video iframe's outerHTML every second,
+    // which forces the browser to reload the YouTube player from scratch each time -- visibly
+    // "blinking" the video and killing any playback in progress. The ring is the only thing
+    // that needs to change mid-countdown; see updatePacingRingDom.
+    updatePacingRingDom();
+  }
+}
 Actions.startPacingTimer = function(durationSec){
   stopPacingTimer();
   if(durationSec==null) durationSec = State.pacingDurationSec;
-  State.pacingTimer = {totalSeconds:durationSec, secondsLeft:durationSec};
+  State.pacingTimer = {totalSeconds:durationSec, secondsLeft:durationSec, paused:false};
   render();
-  pacingIntervalId = setInterval(function(){
-    if(!State.pacingTimer){ clearInterval(pacingIntervalId); pacingIntervalId=null; return; }
-    State.pacingTimer.secondsLeft -= 1;
-    if(State.pacingTimer.secondsLeft<=0){
-      State.pacingTimer.secondsLeft = 0;
-      clearInterval(pacingIntervalId); pacingIntervalId = null;
-      // Finishing the timer (naturally or early) is the signal that the patient is done with this
-      // exercise, so reveal the logging section automatically -- they shouldn't need an extra tap
-      // on top of running the timer.
-      State.exerciseLogRevealed = true;
-      render(); // finished: full re-render for the checkmark/"done" state change (buttons, color, text)
-    } else {
-      // Every other tick: patch just the ring's arc + number in place instead of a full render.
-      // A full render() here would replace the embedded video iframe's outerHTML every second,
-      // which forces the browser to reload the YouTube player from scratch each time -- visibly
-      // "blinking" the video and killing any playback in progress. The ring is the only thing
-      // that needs to change mid-countdown; see updatePacingRingDom.
-      updatePacingRingDom();
-    }
-  }, 1000);
+  pacingIntervalId = setInterval(tickPacingTimer, 1000);
+};
+// Pauses the countdown in place (interval cleared, secondsLeft untouched) so a patient who needs
+// to answer the door or catch their breath doesn't have to lose their progress and restart the
+// whole timer via Reset. Resume picks the countdown back up from exactly where it left off.
+Actions.pausePacingTimer = function(){
+  if(pacingIntervalId){ clearInterval(pacingIntervalId); pacingIntervalId = null; }
+  if(State.pacingTimer) State.pacingTimer.paused = true;
+  render();
+};
+Actions.resumePacingTimer = function(){
+  if(!State.pacingTimer || State.pacingTimer.secondsLeft<=0) return;
+  State.pacingTimer.paused = false;
+  render();
+  pacingIntervalId = setInterval(tickPacingTimer, 1000);
 };
 // Lightweight per-second update used while the pacing timer is running (see
 // Actions.startPacingTimer above) -- recalculates exactly what renderPacingRing's running-state
@@ -1824,18 +1855,24 @@ function renderPacingRing(){
   var progress = (t.totalSeconds - t.secondsLeft) / t.totalSeconds;
   var offset = c * (1 - progress);
   var done = t.secondsLeft <= 0;
+  var paused = !done && t.paused;
   var mm = Math.floor(t.secondsLeft/60), ss = t.secondsLeft%60;
   var label = done ? "✓" : (mm+":"+(ss<10?"0":"")+ss);
+  var helperText = done ? "Nice pacing — log your set below."
+    : (paused ? "Paused — tap Resume whenever you’re ready to continue." : "Move through your reps evenly until this finishes.");
   return '<div style="text-align:center;margin:10px 0;">'+
     '<p style="margin:0 0 4px;font-weight:700;font-size:14px;">⏱ Pacing Timer</p>'+
     '<svg width="110" height="110" viewBox="0 0 120 120">'+
       '<circle cx="60" cy="60" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="10"/>'+
-      '<circle id="pacingArc" class="'+(done?"":"pacing-live")+'" cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
+      '<circle id="pacingArc" class="'+((done||paused)?"":"pacing-live")+'" cx="60" cy="60" r="'+r+'" fill="none" stroke="'+(done?"var(--success)":"var(--primary)")+'" stroke-width="10" stroke-linecap="round" '+
         'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 1s linear;"/>'+
       '<text id="pacingLabel" x="60" y="68" text-anchor="middle" font-size="'+(done?26:22)+'" fill="var(--text)">'+label+'</text>'+
     '</svg>'+
-    '<p class="muted">'+(done?"Nice pacing — log your set below.":"Move through your reps evenly until this finishes.")+'</p>'+
+    '<p class="muted">'+helperText+'</p>'+
     '<div class="row" style="justify-content:center;gap:8px;">'+
+      (done ? "" : (paused
+        ? '<button type="button" class="btn secondary" onclick="Actions.resumePacingTimer()">▶ Resume</button>'
+        : '<button type="button" class="btn secondary" onclick="Actions.pausePacingTimer()">⏸ Pause</button>'))+
       '<button type="button" class="btn ghost" onclick="Actions.resetPacingTimer()">'+(done?"Start a new timer":"Reset timer")+'</button>'+
     '</div>'+
   '</div>';
@@ -1845,8 +1882,10 @@ function renderExerciseRpePrompt(){
   var p = getPatient(flow.patientId);
   var exercise = p.phaseDosage[flow.index];
   var isLast = flow.index === p.phaseDosage.length-1;
-  return '<div class="modal-overlay"><div class="modal">'+
-    '<h2>'+escapeHtml(exercise.name)+'</h2>'+
+  return '<div class="modal-overlay"><div class="modal" style="position:relative;">'+
+    '<button type="button" onclick="Actions.exitWorkout()" aria-label="Exit workout" title="Exit workout" '+
+      'style="position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px;">✕</button>'+
+    '<h2 style="padding-right:28px;">'+escapeHtml(exercise.name)+'</h2>'+
     '<p class="muted" style="margin:0 0 8px;">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+'</p>'+
     '<div style="background:var(--primary-bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;text-align:center;">'+
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
