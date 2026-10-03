@@ -1120,6 +1120,21 @@ Actions.exitWorkout = function(){
   render();
 };
 
+// Lets the patient skip just the CURRENT exercise (pain, fatigue, ran out of time, etc.) and move
+// straight on to the next one -- unlike Actions.exitWorkout, the rest of the session continues.
+// Recorded with skipped:true, no sets/reps/rpe, so the history table and session summary can show
+// "skipped" instead of a misleading 0×0 reps / RPE 0. Rules.advancePhaseDosage doesn't read
+// exerciseRpes at all (it just finds the first phaseDosage entry still below target), so skipping
+// one exercise's rating has no side effect on dosage progression either way.
+Actions.skipExercise = function(){
+  if(!confirm("Skip this exercise and move to the next one?")) return;
+  var flow = State.exerciseRpeFlow;
+  var p = getPatient(flow.patientId);
+  var exercise = p.phaseDosage[flow.index];
+  flow.ratings.push({name:exercise.name, skipped:true});
+  advanceExerciseRpeFlow();
+};
+
 // ---- Accessible sets/reps entry: "did you hit the goal?" Yes/No first, numbers only if needed ----
 // Defaults to the lowest-effort path: the number inputs already default to the exercise's goal
 // (see the form fields below), so confirming "Yes" just locks those defaults in -- zero typing,
@@ -1662,7 +1677,7 @@ function renderPatientLog(p){
     var detailHtml = sessions.length
       ? sessions.map(function(s, i){
           var exerciseSummary = (s.exerciseRpes && s.exerciseRpes.length)
-            ? s.exerciseRpes.map(function(r){ return r.name+" "+r.setsCompleted+"×"+r.repsCompleted+" RPE"+r.rpe; }).join(", ")
+            ? s.exerciseRpes.map(function(r){ return r.skipped ? r.name+" (skipped)" : r.name+" "+r.setsCompleted+"×"+r.repsCompleted+" RPE"+r.rpe; }).join(", ")
             : "—";
           var prefix = sessions.length>1 ? "Session "+(i+1)+" (RPE "+s.rpe+"): " : "RPE "+s.rpe+": ";
           return '<div>'+escapeHtml(prefix+exerciseSummary)+'</div>';
@@ -1849,8 +1864,15 @@ Actions.openExerciseReferenceTab = function(name){
     '<!doctype html><html><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width, initial-scale=1">'+
     '<title>'+escapeHtml(name)+'</title>'+
-    '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:20px 16px 40px;color:#1c2530;}'+
-    'img{border-radius:10px;}h1{font-size:22px;}</style></head><body>'+
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:64px 16px 40px;color:#1c2530;}'+
+    'img{border-radius:10px;}h1{font-size:22px;}'+
+    // A patient opening this in a standalone installed-PWA context may have no browser chrome
+    // (no back/close button of its own), so this page must supply its own obvious way out.
+    // window.close() works here because this tab was opened by script (window.open), which is
+    // exactly the case browsers allow a page to close itself.
+    '.exit-tab-btn{position:fixed;top:12px;right:12px;background:#1c2530;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;}'+
+    '</style></head><body>'+
+    '<button type="button" class="exit-tab-btn" onclick="window.close()">✕ Close this tab</button>'+
     '<h1>'+escapeHtml(name)+'</h1>'+
     exerciseReferenceHtml(name, 31)+
     '</body></html>'
@@ -1881,6 +1903,7 @@ function renderExerciseRpePrompt(){
     '<div id="exerciseLogTrigger" style="display:'+(!State.exerciseLogRevealed?"block":"none")+';text-align:center;margin:14px 0 4px;">'+
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
     '</div>'+
+    '<p style="text-align:center;margin:6px 0 4px;"><a href="#" onclick="Actions.skipExercise(); return false;" style="font-size:13px;color:var(--muted);">Skip this exercise →</a></p>'+
     '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
       '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
@@ -1954,7 +1977,9 @@ function renderPostSessionModal(){
   html += '<p>Overall Borg RPE <strong>'+(summary.rpe!=null?summary.rpe:"—")+'</strong> &middot; Pain <strong>'+summary.pain+'</strong> &middot; Fatigue <strong>'+summary.fatigue+'</strong></p>';
   if(summary.exerciseRpes && summary.exerciseRpes.length){
     html += '<h3>Per-exercise results</h3><ul class="criteria-list">'+summary.exerciseRpes.map(function(r){
-      return '<li>'+escapeHtml(r.name)+': '+r.setsCompleted+'×'+r.repsCompleted+' reps, RPE <strong>'+r.rpe+'</strong></li>';
+      return r.skipped
+        ? '<li>'+escapeHtml(r.name)+': skipped</li>'
+        : '<li>'+escapeHtml(r.name)+': '+r.setsCompleted+'×'+r.repsCompleted+' reps, RPE <strong>'+r.rpe+'</strong></li>';
     }).join("")+'</ul>';
   }
 
