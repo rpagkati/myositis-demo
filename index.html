@@ -265,55 +265,84 @@ var REFERENCE_EXERCISES = [
   {id:"r16", name:"Sit-to-Stand Endurance Set", region:"Hip/Knee", category:"Endurance", desc:"Repeated sit-to-stand cycles at a sustainable pace for time.", equipment:"Sturdy chair"}
 ];
 
-// ---- Exercise media (illustration + demo video) ----
+// ---- Exercise media (illustration + demo video + written instructions) ----
 // Maps each exercise's exact name (as it appears in REFERENCE_EXERCISES and PHASE_TEMPLATES --
 // note some phase-template names differ only in casing from their reference-library counterpart,
 // e.g. "Straight leg raise" vs "Straight Leg Raise", so both are listed separately) to a simple
-// illustrative pose key (see EXERCISE_POSE_SVGS/renderExerciseMedia below) and a demo video.
-// videoUrl points to a real, independently-sourced general exercise-instruction video, not
-// anything myositis-specific or clinically prescribed -- same "never invent clinical content"
-// rule as the IBM placeholder exercise and the PDF-import review screen.
+// illustrative pose key (see EXERCISE_POSE_SVGS/renderExerciseMedia below), a demo video, and a
+// one-sentence written description of the movement (desc). Both the video and desc are generic,
+// independently-known descriptions of a standard, widely-taught exercise -- the same kind of
+// one-liner printed on virtually any generic PT handout -- not anything myositis-specific,
+// clinically prescribed, or carrying a sets/reps/intensity decision; same "never invent clinical
+// content" rule as the IBM placeholder exercise and the PDF-import review screen. Several desc
+// values are reused verbatim from REFERENCE_EXERCISES where the same exercise appears there.
 //
-// IMPORTANT CAVEAT: these URLs were found via web search (matched by title/channel/description
-// across multiple independent search queries) but NOT fetched and confirmed to actually load --
-// this sandbox's network egress proxy blocks every domain except github.com, so neither this app
-// nor the research agent that found these could directly verify a single one resolves. Treat
-// these as "best candidate found," not "confirmed working," until someone clicks through on a
-// normal connection. videoCaveat flags the ones the research agent itself was least confident
-// about (couldn't find an ideal source match). If a link turns out dead or wrong, swap it here --
-// renderExerciseMedia falls back to a plain "no demo video yet" note for any exercise without an
-// entry, same as it did before these were added.
+// IMPORTANT CAVEAT: these video URLs were found via web search (matched by title/channel/
+// description across multiple independent search queries) but NOT fetched and confirmed to
+// actually load -- this sandbox's network egress proxy blocks every domain except github.com, so
+// neither this app nor the research agent that found these could directly verify a single one
+// resolves. Treat these as "best candidate found," not "confirmed working," until someone clicks
+// through on a normal connection. videoCaveat flags the ones the research agent itself was least
+// confident about (couldn't find an ideal source match). If a link turns out dead or wrong, swap
+// it here -- renderExerciseMedia falls back to a plain "no demo video yet" note for any exercise
+// without an entry, same as it did before these were added.
 var EXERCISE_MEDIA = {
-  "Sit-to-Stand": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo"},
-  "Mini Squat": {pose:"squat_mini", videoUrl:"https://www.youtube.com/watch?v=GIz1C3yfE1s", videoSource:"Ask Doctor Jo"},
-  "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo"},
-  "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo"},
-  "Straight leg raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo"},
-  "Heel Raises": {pose:"heel_raise", videoUrl:"https://www.youtube.com/watch?v=J3qQrxPEhHA", videoSource:"Ask Doctor Jo"},
-  "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:"https://www.youtube.com/watch?v=ohvR3shCV90", videoSource:"Ask Doctor Jo"},
-  "Wall Push-up": {pose:"wall_pushup", videoUrl:"https://www.youtube.com/watch?v=AkNqpYt9Hjs", videoSource:"Bob & Brad"},
+  "Sit-to-Stand": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo",
+    desc:"Rise from a chair to standing without hand assist if tolerated; sit back with control."},
+  "Mini Squat": {pose:"squat_mini", videoUrl:"https://www.youtube.com/watch?v=GIz1C3yfE1s", videoSource:"Ask Doctor Jo",
+    desc:"Partial-range squat holding a stable surface as needed."},
+  "Standing Hip Abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo",
+    desc:"Lift leg sideways with control, hips level, minimal trunk lean."},
+  "Straight Leg Raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo",
+    desc:"Supine, tighten quad, lift straight leg to hip height."},
+  "Straight leg raise": {pose:"supine_straight_leg_raise", videoUrl:"https://www.youtube.com/watch?v=Ka19yzAlIGY", videoSource:"Ask Doctor Jo",
+    desc:"Supine, tighten quad, lift straight leg to hip height."},
+  "Heel Raises": {pose:"heel_raise", videoUrl:"https://www.youtube.com/watch?v=J3qQrxPEhHA", videoSource:"Ask Doctor Jo",
+    desc:"Rise onto toes, lower slowly under control."},
+  "Seated Ankle Pumps": {pose:"seated_ankle_pump", videoUrl:"https://www.youtube.com/watch?v=ohvR3shCV90", videoSource:"Ask Doctor Jo",
+    desc:"Alternate dorsiflexion/plantarflexion for circulation and endurance."},
+  "Wall Push-up": {pose:"wall_pushup", videoUrl:"https://www.youtube.com/watch?v=AkNqpYt9Hjs", videoSource:"Bob & Brad",
+    desc:"Hands on wall, lower chest toward wall, press back."},
   "Shoulder Flexion Raise": {pose:"shoulder_flexion", videoUrl:"https://www.youtube.com/watch?v=b7yQwf-K7z0", videoSource:"E3 Rehab",
-    videoCaveat:"Covers shoulder ROM generally, not an isolated flexion raise -- double-check it fits."},
-  "Scapular Squeeze": {pose:"scapular_squeeze", videoUrl:"https://www.youtube.com/watch?v=ouRhQE2iOI8", videoSource:"Ask Doctor Jo"},
-  "Seated Marching": {pose:"seated_marching", videoUrl:"https://www.youtube.com/watch?v=YCUy5lDcOtc", videoSource:"Ask Doctor Jo"},
-  "Bridging": {pose:"bridge", videoUrl:"https://www.youtube.com/watch?v=ytvP0oUDKYw", videoSource:"Ask Doctor Jo"},
-  "Modified Plank": {pose:"plank", videoUrl:"https://www.youtube.com/watch?v=vHKSPiF8N5I", videoSource:"Ask Doctor Jo"},
-  "Stationary Cycling": {pose:"cycling", videoUrl:"https://www.youtube.com/watch?v=XugMoMDxyhM", videoSource:"SilverSneakers"},
+    videoCaveat:"Covers shoulder ROM generally, not an isolated flexion raise -- double-check it fits.",
+    desc:"Raise arm forward to shoulder height, light or no weight."},
+  "Scapular Squeeze": {pose:"scapular_squeeze", videoUrl:"https://www.youtube.com/watch?v=ouRhQE2iOI8", videoSource:"Ask Doctor Jo",
+    desc:"Squeeze shoulder blades together, hold, release."},
+  "Seated Marching": {pose:"seated_marching", videoUrl:"https://www.youtube.com/watch?v=YCUy5lDcOtc", videoSource:"Ask Doctor Jo",
+    desc:"Alternate lifting knees while seated, moderate pace."},
+  "Bridging": {pose:"bridge", videoUrl:"https://www.youtube.com/watch?v=ytvP0oUDKYw", videoSource:"Ask Doctor Jo",
+    desc:"Supine, lift hips off mat, squeeze glutes, lower slowly."},
+  "Modified Plank": {pose:"plank", videoUrl:"https://www.youtube.com/watch?v=vHKSPiF8N5I", videoSource:"Ask Doctor Jo",
+    desc:"Forearm or hands-and-knees plank, brace trunk."},
+  "Stationary Cycling": {pose:"cycling", videoUrl:"https://www.youtube.com/watch?v=XugMoMDxyhM", videoSource:"SilverSneakers",
+    desc:"Low resistance, steady cadence, monitor RPE closely."},
   "Supported Treadmill Walking": {pose:"treadmill", videoUrl:"https://www.youtube.com/watch?v=4FOkSNhcncg", videoSource:"Margaret Martin, PT",
-    videoCaveat:"General beginner/senior treadmill workout, not specifically rail-assisted rehab walking -- double-check it fits."},
-  "Water Walking": {pose:"water_walking", videoUrl:"https://www.youtube.com/watch?v=ZgxniVfKT4I", videoSource:"Ask Doctor Jo"},
-  "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=O1BXw0abQLs", videoSource:"Physiotutors"},
+    videoCaveat:"General beginner/senior treadmill workout, not specifically rail-assisted rehab walking -- double-check it fits.",
+    desc:"Level walking at a comfortable pace with rail support available."},
+  "Water Walking": {pose:"water_walking", videoUrl:"https://www.youtube.com/watch?v=ZgxniVfKT4I", videoSource:"Ask Doctor Jo",
+    desc:"Chest-deep water walking; buoyancy reduces joint/muscle load."},
+  "Sit-to-Stand Endurance Set": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=O1BXw0abQLs", videoSource:"Physiotutors",
+    desc:"Repeated sit-to-stand cycles at a sustainable pace for time."},
   "Transversus abdominis activation": {pose:"supine_core", videoUrl:"https://www.youtube.com/watch?v=Ielt7Mj-F_I", videoSource:"Canadian Chiropractic Guideline Initiative",
-    videoCaveat:"Best match found, but not from a PT-brand channel like the others -- double-check it fits."},
+    videoCaveat:"Best match found, but not from a PT-brand channel like the others -- double-check it fits.",
+    desc:"Lying on your back with knees bent, gently draw your lower abdomen in (as if bracing before a cough) without holding your breath, and hold briefly."},
   "Heel slides": {pose:"supine_heel_slide", videoUrl:"https://www.youtube.com/watch?v=c-gRSlCfNZE", videoSource:"YouTube (channel unconfirmed)",
-    videoCaveat:"Title matches exactly (“Heel Slides in Supine”) but not from one of the usual PT-brand channels -- double-check it fits."},
-  "Clamshells": {pose:"sidelying_clamshell", videoUrl:"https://www.youtube.com/watch?v=O2KPabIoPPk", videoSource:"Ask Doctor Jo"},
-  "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=EwBJKBa4PKU", videoSource:"Ask Doctor Jo"},
-  "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo"},
-  "Wall squats": {pose:"squat_wall", videoUrl:"https://www.youtube.com/watch?v=DzsTgz-r6t0", videoSource:"Bob & Brad"},
-  "Step ups": {pose:"step_up", videoUrl:"https://www.youtube.com/watch?v=s5qERHI9iWQ", videoSource:"Bob & Brad"},
-  "Standing hip flexion": {pose:"standing_hip_flexion", videoUrl:"https://www.youtube.com/watch?v=ApZOAx24-X8", videoSource:"Ask Doctor Jo"},
-  "Standing hip abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo"}
+    videoCaveat:"Title matches exactly (“Heel Slides in Supine”) but not from one of the usual PT-brand channels -- double-check it fits.",
+    desc:"Lying on your back, slowly slide one heel toward your buttocks bending the knee, then slide it back out straight."},
+  "Clamshells": {pose:"sidelying_clamshell", videoUrl:"https://www.youtube.com/watch?v=O2KPabIoPPk", videoSource:"Ask Doctor Jo",
+    desc:"Lying on your side with knees bent and feet together, keep heels touching and lift the top knee open like a clamshell, then lower with control."},
+  "Sidelying hip abduction": {pose:"sidelying_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=EwBJKBa4PKU", videoSource:"Ask Doctor Jo",
+    desc:"Lying on your side with legs stacked and straight, lift the top leg straight up toward the ceiling, then lower with control."},
+  "Sit to stand from chair": {pose:"sit_to_stand", videoUrl:"https://www.youtube.com/watch?v=nJEP2CE8oGM", videoSource:"Ask Doctor Jo",
+    desc:"Rise from a chair to standing without using your hands if tolerated, then sit back down with control."},
+  "Wall squats": {pose:"squat_wall", videoUrl:"https://www.youtube.com/watch?v=DzsTgz-r6t0", videoSource:"Bob & Brad",
+    desc:"Back against a wall, slide down into a partial squat, hold briefly, then slide back up."},
+  "Step ups": {pose:"step_up", videoUrl:"https://www.youtube.com/watch?v=s5qERHI9iWQ", videoSource:"Bob & Brad",
+    desc:"Step up fully onto a stable step with one leg, then step back down with control; repeat leading with each leg."},
+  "Standing hip flexion": {pose:"standing_hip_flexion", videoUrl:"https://www.youtube.com/watch?v=ApZOAx24-X8", videoSource:"Ask Doctor Jo",
+    desc:"Standing with support if needed, lift one knee up toward your chest with control, then lower; repeat on each side."},
+  "Standing hip abduction": {pose:"standing_hip_abduction", videoUrl:"https://www.youtube.com/watch?v=qBqKuEQl9sI", videoSource:"Ask Doctor Jo",
+    desc:"Lift leg sideways with control, hips level, minimal trunk lean."}
 };
 
 /* ======================== Utilities ======================== */
@@ -1724,24 +1753,28 @@ function renderPhaseProgressionCard(p, clinicianMode){
 // Asked once per exercise, immediately after the patient marks it done, before moving on to
 // the next one -- see Actions.saveDailyLog/submitExerciseRpe for how this walkthrough is driven.
 // Below the demo video sits a small row of still reference photos of someone actually
-// performing this exercise. Deliberately pulled from the SAME video playing above -- YouTube
-// auto-generates several numbered thumbnail frames per video (1.jpg/2.jpg/3.jpg, roughly its
-// 25%/50%/75% marks, via img.youtube.com, no API key needed, same technique the Exercise
-// Library already uses for its single thumbnail) -- rather than separately sourced photos, so
-// every photo shown is guaranteed to match the video instead of risking a mismatched pose from
-// a different source. Showing a few different frames (not just one) also means there's a much
-// better chance at least one of them actually shows the exercise mid-motion, since any single
-// frame can land on a title card or a talking-head intro instead. Falls back to the schematic
-// pose illustration (EXERCISE_POSE_SVGS) for any exercise with no video yet, same fallback
-// renderExerciseMedia uses.
+// performing this exercise, plus its one-sentence written description (EXERCISE_MEDIA.desc).
+// Photos are deliberately pulled from the SAME video playing above -- YouTube auto-generates
+// several numbered thumbnail frames per video (1.jpg/2.jpg/3.jpg, roughly its 25%/50%/75% marks,
+// via img.youtube.com, no API key needed, same technique the Exercise Library already uses for
+// its single thumbnail) -- rather than separately sourced photos, so every photo shown is
+// guaranteed to match the video instead of risking a mismatched pose from a different source.
+// Showing a few different frames (not just one) also means there's a much better chance at
+// least one of them actually shows the exercise mid-motion, since any single frame can land on
+// a title card or a talking-head intro instead. Falls back to the schematic pose illustration
+// (EXERCISE_POSE_SVGS) for any exercise with no video yet, same fallback renderExerciseMedia
+// uses.
+function exercisePhotoUrls(ytId){
+  return [1,2,3].map(function(n){ return "https://img.youtube.com/vi/"+ytId+"/"+n+".jpg"; });
+}
 function renderExercisePhoto(name){
   var m = EXERCISE_MEDIA[name];
   var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
-  var media;
+  var media, instructions;
   if(ytId){
     media = '<div style="display:flex;gap:6px;">'+
-      [1,2,3].map(function(n){
-        return '<img src="https://img.youtube.com/vi/'+ytId+'/'+n+'.jpg" alt="'+escapeHtml(name)+' exercise photo '+n+'" loading="lazy" '+
+      exercisePhotoUrls(ytId).map(function(src, i){
+        return '<img src="'+src+'" alt="'+escapeHtml(name)+' exercise photo '+(i+1)+'" loading="lazy" '+
           'style="width:'+(100/3)+'%;display:block;border-radius:8px;object-fit:cover;aspect-ratio:4/3;">';
       }).join('')+
     '</div>';
@@ -1750,11 +1783,80 @@ function renderExercisePhoto(name){
   } else {
     media = '<div class="muted" style="text-align:center;padding:16px 0;font-size:12px;">No reference photo yet</div>';
   }
+  instructions = (m && m.desc) ? m.desc : "No written instructions available yet -- follow the video above.";
+  var nameAttr = escapeHtml(name).replace(/'/g, "&#39;");
   return '<div style="margin:14px 0;">'+
-    '<p class="muted" style="margin:0 0 6px;font-weight:700;font-size:13px;">📷 Exercise Photo Reference</p>'+
+    '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
+      '<p class="muted" style="margin:0;font-weight:700;font-size:13px;">📷 Exercise Photo Reference</p>'+
+      '<div class="row" style="gap:10px;">'+
+        '<a href="#" onclick="Actions.showExerciseZoom(\''+nameAttr+'\'); return false;" style="font-size:12px;">🔍 View larger</a>'+
+        '<a href="#" onclick="Actions.openExerciseReferenceTab(\''+nameAttr+'\'); return false;" style="font-size:12px;">↗ Open in new tab</a>'+
+      '</div>'+
+    '</div>'+
     media+
+    // Scrollable so a longer future instruction doesn't push the rest of the page down -- the
+    // text itself is one short sentence today, but this keeps the box a fixed, predictable size.
+    '<div class="muted" style="margin-top:8px;font-size:13px;line-height:1.5;max-height:90px;overflow-y:auto;padding-right:4px;">'+escapeHtml(instructions)+'</div>'+
   '</div>';
 }
+// Builds the shared "photos + instructions" HTML used by both the in-app zoom overlay and the
+// new-tab view -- one place for this markup instead of three slightly different copies.
+function exerciseReferenceHtml(name, imgWidthPct){
+  var m = EXERCISE_MEDIA[name];
+  var ytId = m && m.videoUrl ? youTubeId(m.videoUrl) : null;
+  var photosHtml = ytId
+    ? '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        exercisePhotoUrls(ytId).map(function(src, i){
+          return '<img src="'+src+'" alt="'+escapeHtml(name)+' exercise photo '+(i+1)+'" style="width:'+imgWidthPct+'%;border-radius:10px;display:block;object-fit:cover;aspect-ratio:4/3;">';
+        }).join('')+
+      '</div>'
+    : (m && EXERCISE_POSE_SVGS[m.pose] ? '<div style="max-width:220px;margin:0 auto;">'+EXERCISE_POSE_SVGS[m.pose]+'</div>' : '');
+  var instructions = (m && m.desc) ? m.desc : "No written instructions available yet -- follow the demo video for this exercise.";
+  return photosHtml+'<p style="font-size:18px;line-height:1.6;margin-top:16px;">'+escapeHtml(instructions)+'</p>';
+}
+// Shows a larger, easier-to-read view of this exercise's photos + instructions, entirely as a
+// DOM overlay appended directly to <body> -- NOT via State + render(), which would rebuild
+// #app's whole innerHTML (including the live video iframe above) and restart it from 0:00. This
+// way the overlay can sit on top of everything while the video keeps playing underneath,
+// unaffected.
+Actions.showExerciseZoom = function(name){
+  Actions.closeExerciseZoom();
+  var overlay = document.createElement("div");
+  overlay.id = "exerciseZoomOverlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(20,25,35,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;";
+  overlay.onclick = function(e){ if(e.target===overlay) Actions.closeExerciseZoom(); };
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;position:relative;">'+
+    '<button type="button" onclick="Actions.closeExerciseZoom()" aria-label="Close" '+
+      'style="position:absolute;top:12px;right:12px;background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:4px;">✕</button>'+
+    '<h2 style="margin:0 0 12px;padding-right:28px;">'+escapeHtml(name)+'</h2>'+
+    exerciseReferenceHtml(name, 32)+
+  '</div>';
+  document.body.appendChild(overlay);
+};
+Actions.closeExerciseZoom = function(){
+  var el = document.getElementById("exerciseZoomOverlay");
+  if(el) el.remove();
+};
+// Opens the same photos + instructions in a genuinely separate tab/window via window.open('')
+// + document.write -- not a data: URL (increasingly blocked as a top-level navigation target in
+// modern browsers) and not a render() of this page. Because it's a brand-new window object,
+// nothing in THIS page's DOM is touched, so the exercise video playing above keeps running the
+// whole time, exactly as if the patient had switched to a different app entirely.
+Actions.openExerciseReferenceTab = function(name){
+  var w = window.open("", "_blank");
+  if(!w) return; // popup blocked -- nothing more we can do here
+  w.document.write(
+    '<!doctype html><html><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width, initial-scale=1">'+
+    '<title>'+escapeHtml(name)+'</title>'+
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:20px 16px 40px;color:#1c2530;}'+
+    'img{border-radius:10px;}h1{font-size:22px;}</style></head><body>'+
+    '<h1>'+escapeHtml(name)+'</h1>'+
+    exerciseReferenceHtml(name, 31)+
+    '</body></html>'
+  );
+  w.document.close();
+};
 function renderExerciseRpePrompt(){
   var flow = State.exerciseRpeFlow;
   var p = getPatient(flow.patientId);
