@@ -151,6 +151,9 @@
      used for e.g. "Skip this exercise"/"Previous exercise", tapped mid-session by patients who may
      have reduced grip/finger precision. */
   .tap-link{display:inline-flex;align-items:center;padding:10px 6px;min-height:44px;font-size:13px;color:var(--muted);}
+  .field-invalid{outline:2px solid var(--danger);outline-offset:6px;border-radius:8px;}
+  .field-error{color:var(--danger);font-size:12.5px;font-weight:600;margin:8px 0 0;}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:300;max-width:420px;width:calc(100% - 32px);display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);}
 </style>
 </head>
 <body>
@@ -1119,7 +1122,7 @@ Actions.submitExerciseRpe = function(ev){
   // The RPE value lives on a hidden input (see renderRpeButtons) that HTML5 "required" can't
   // reliably enforce, so check it explicitly here instead.
   if(f.rpe.value===""){
-    alert("Please tap a number to rate how hard that exercise felt (Borg RPE).");
+    showFieldError("exerciseRpeField", "Please tap a number to rate how hard that exercise felt.");
     return;
   }
   var flow = State.exerciseRpeFlow;
@@ -1280,6 +1283,58 @@ Actions.selectScaleValue = function(btn, fieldName, val){
     b.classList.remove("selected");
   });
   btn.classList.add("selected");
+  // Clear any "please tap a number" error left over from a previous failed submit attempt -- see
+  // showFieldError, used instead of a blocking alert() for this.
+  var group = btn.closest('[role="group"]');
+  if(group && group.id) clearFieldError(group.id);
+};
+
+// ---- Inline validation + toast notifications, instead of blocking alert() ----
+// The Borg RPE/Pain/Fatigue scales are a grid of plain buttons backed by a hidden input (see
+// renderScaleButtons), so HTML5 "required" can't catch an unanswered one -- these render a small
+// error message directly under the field group (which needs its own id, matching aria-labelledby)
+// instead of interrupting with alert(), and clear automatically on the next tap (see
+// Actions.selectScaleValue above).
+function showFieldError(fieldId, message){
+  var field = document.getElementById(fieldId);
+  if(!field) return;
+  clearFieldError(fieldId);
+  var err = document.createElement("p");
+  err.className = "field-error";
+  err.id = fieldId+"Error";
+  err.setAttribute("role","alert");
+  err.textContent = message;
+  field.appendChild(err);
+  field.classList.add("field-invalid");
+  field.scrollIntoView({block:"center", behavior:"smooth"});
+}
+function clearFieldError(fieldId){
+  var field = document.getElementById(fieldId);
+  if(!field) return;
+  var err = document.getElementById(fieldId+"Error");
+  if(err) err.remove();
+  field.classList.remove("field-invalid");
+}
+
+// A brief, dismissible toast for messages that aren't an urgent yes/no decision (confirm() stays
+// for those -- see Actions.resetDemo, Actions.exitWorkout, etc.). Appended to document.body,
+// outside #app and the render() cycle, so it survives whatever render() already ran right before
+// it's shown and isn't wiped by the next one either. Auto-dismisses after 6s, or via its own
+// close button.
+var toastTimer = null;
+Actions.showToast = function(message, type){
+  var existing = document.getElementById("appToast");
+  if(existing) existing.remove();
+  if(toastTimer) clearTimeout(toastTimer);
+  var toast = document.createElement("div");
+  toast.id = "appToast";
+  toast.className = "alert alert-"+(type||"info")+" toast";
+  toast.setAttribute("role","alert");
+  toast.innerHTML = '<span>'+escapeHtml(message)+'</span>'+
+    '<button type="button" onclick="document.getElementById(\'appToast\').remove()" aria-label="Dismiss" '+
+      'style="background:none;border:none;font-size:16px;line-height:1;cursor:pointer;color:inherit;padding:2px 4px;flex-shrink:0;">✕</button>';
+  document.body.appendChild(toast);
+  toastTimer = setTimeout(function(){ var t = document.getElementById("appToast"); if(t) t.remove(); }, 6000);
 };
 function renderScaleButtons(fieldName, preselected){
   var html = '<input type="hidden" name="'+fieldName+'" value="'+(preselected!=null?preselected:"")+'">';
@@ -1324,9 +1379,9 @@ Actions.submitSessionWrapup = function(ev){
   var f = ev.target;
   // RPE/pain/fatigue all live on hidden inputs now (see renderScaleButtons) that HTML5
   // "required" can't reliably enforce, so check them explicitly here instead.
-  if(f.rpe.value===""){ alert("Please tap a number for Borg RPE (how hard the session felt)."); return; }
-  if(f.pain.value===""){ alert("Please tap a number for your pain level right now."); return; }
-  if(f.fatigue.value===""){ alert("Please tap a number for your fatigue level right now."); return; }
+  if(f.rpe.value===""){ showFieldError("wrapupRpeField", "Please tap a number for how hard the whole session felt."); return; }
+  if(f.pain.value===""){ showFieldError("wrapupPainField", "Please tap a number for your pain level right now."); return; }
+  if(f.fatigue.value===""){ showFieldError("wrapupFatigueField", "Please tap a number for your fatigue level right now."); return; }
   var patientId = State.pendingRpePrompt.patientId;
   var exerciseRpes = State.pendingRpePrompt.exerciseRpes;
   var p = getPatient(patientId);
@@ -1379,12 +1434,12 @@ Actions.submitCheckin = function(ev){
   render();
   if(flagged){
     if(p.sharingEnabled){
-      alert("Thanks for checking in. This has been flagged for your PT, "+p.localPtName+", to review.");
+      Actions.showToast("Thanks for checking in. This has been flagged for your PT, "+p.localPtName+", to review.", "success");
     } else {
-      alert("Thanks for checking in. Sharing is currently off, so this was not sent to your PT automatically — please reach out directly to "+p.localPtName+" or your physician.");
+      Actions.showToast("Thanks for checking in. Sharing is currently off, so this wasn't sent to your PT automatically — please reach out directly to "+p.localPtName+" or your physician.", "warning");
     }
   } else {
-    alert("Thanks for checking in! Glad to hear you're doing okay.");
+    Actions.showToast("Thanks for checking in! Glad to hear you're doing okay.", "success");
   }
 };
 
@@ -1421,7 +1476,7 @@ Actions.editPrescription = function(patientId, exerciseId){
 Actions.confirmAdvance = function(patientId, exerciseId){
   var p = getPatient(patientId);
   if(Rules.weightedProgressionLocked(p)){
-    alert("Weighted resistance progression is locked until "+p.name+" advances to Phase 2 (progression model: sequential).");
+    Actions.showToast("Weighted resistance progression is locked until "+p.name+" advances to Phase 2 (progression model: sequential).", "warning");
     return;
   }
   var ex = p.program.find(function(e){ return e.id===exerciseId; });
@@ -2089,7 +2144,7 @@ function renderExerciseRpePrompt(){
         '</div>'+
         '<p style="text-align:center;margin-top:-4px;"><a href="#" onclick="Actions.reopenGoalAsk(); return false;">← Back</a></p>'+
       '</div>'+
-      '<div class="field" role="group" aria-labelledby="exerciseRpeLabel"><label id="exerciseRpeLabel">Borg RPE Scale — how hard did that feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field" id="exerciseRpeField" role="group" aria-labelledby="exerciseRpeLabel"><label id="exerciseRpeLabel">Borg RPE Scale — how hard did that feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
       '</div>'+
@@ -2105,9 +2160,9 @@ function renderSessionWrapupPrompt(){
     '<h2 id="wrapupModalTitle">How did the whole session feel?</h2>'+
     '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
     '<form onsubmit="Actions.submitSessionWrapup(event)">'+
-      '<div class="field" role="group" aria-labelledby="wrapupRpeLabel"><label id="wrapupRpeLabel">Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
-      '<div class="field" role="group" aria-labelledby="wrapupPainLabel"><label id="wrapupPainLabel">How much pain do you have right now?</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
-      '<div class="field" role="group" aria-labelledby="wrapupFatigueLabel"><label id="wrapupFatigueLabel">How much fatigue do you have right now?</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
+      '<div class="field" id="wrapupRpeField" role="group" aria-labelledby="wrapupRpeLabel"><label id="wrapupRpeLabel">Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field" id="wrapupPainField" role="group" aria-labelledby="wrapupPainLabel"><label id="wrapupPainLabel">How much pain do you have right now?</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
+      '<div class="field" id="wrapupFatigueField" role="group" aria-labelledby="wrapupFatigueLabel"><label id="wrapupFatigueLabel">How much fatigue do you have right now?</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
       '<div class="field">'+
         '<label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+' onchange="Actions.toggleWrapupFollowup(this.checked)"> Is any pain or fatigue above related to your last exercise session?</label>'+
       '</div>'+
