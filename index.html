@@ -894,6 +894,7 @@ var State = {
   libraryFilter:{search:"", region:"All"},
   fomMeasure:"gaitSpeed",
   mmtMuscle:"hipFlexors",
+  trendsSelected:["rpe","pain","fatigue"], // which parameters the patient Trends tab's multi-select chart picker currently has checked; see trendParamsFor/Actions.toggleTrendParam
   checkinDraft:null,
   sharingStatusByPatient:{}, // patientId -> last-fetched {sharingEnabled, link} from the backend
   sharingBusy:false,
@@ -929,6 +930,11 @@ Actions.resetDemo = function(){ resetDemoData(); };
 Actions.setLibraryFilter = function(field, val){ State.libraryFilter[field]=val; render(); };
 Actions.setFomMeasure = function(v){ State.fomMeasure=v; render(); };
 Actions.setMmtMuscle = function(v){ State.mmtMuscle=v; render(); };
+Actions.toggleTrendParam = function(key){
+  var idx = State.trendsSelected.indexOf(key);
+  if(idx>=0) State.trendsSelected.splice(idx,1); else State.trendsSelected.push(key);
+  render();
+};
 
 // Legacy local-only toggle, used only when SHARING_API_BASE is blank (no backend
 // configured). No email, no revocable link, no audit trail — see renderSharing().
@@ -2346,6 +2352,52 @@ function renderLibrary(){
   return html;
 }
 
+// ---- Trends chart parameter picker ----
+// Lists every parameter the patient Trends tab can plot: RPE/Pain/Fatigue (always, 0-10), every
+// MMT muscle (0-5), and every FOM measure for this patient's diagnosis (fomMeasuresFor already
+// picks IBMFRS vs FI-2/FI-3 correctly). Each gets a `group` key -- parameters sharing a group get
+// combined onto ONE chart; everything else gets its own. RPE/Pain/Fatigue share "effort" (same
+// 0-10 scale, same direction: higher = worse), every MMT muscle shares "mmt" (same 0-5 scale), but
+// each FOM measure gets its OWN group ("fom_"+key) since they're different units from each other
+// (gait speed in m/s, TUG in seconds, IBMFRS 0-40...) -- combining those onto one axis would be
+// misleading, e.g. a 0.7-0.9 m/s gait speed would look like a flat line next to a 0-10 RPE scale.
+function trendParamsFor(p){
+  var params = [
+    {key:"rpe", label:"RPE", group:"effort", color:"#2563a6", section:"Session feeling (0–10)"},
+    {key:"pain", label:"Pain", group:"effort", color:"#b3241c", section:"Session feeling (0–10)"},
+    {key:"fatigue", label:"Fatigue", group:"effort", color:"#9a6b00", section:"Session feeling (0–10)"}
+  ];
+  var mmtColors = ["#7a2ea6","#b06a00","#1f8a55","#2563a6"];
+  MUSCLES.forEach(function(m, i){
+    params.push({key:"mmt_"+m.key, label:m.label, group:"mmt", color:mmtColors[i%mmtColors.length], section:"Muscle strength – MMT (0–5)"});
+  });
+  fomMeasuresFor(p).forEach(function(m){
+    params.push({key:"fom_"+m.key, label:m.label, group:"fom_"+m.key, color:"#2563a6", section:"Functional measures"});
+  });
+  return params;
+}
+function trendParamPoints(p, param){
+  if(param.key==="rpe"){
+    // Per session, not per day, since a day can hold more than one (see Actions.startWorkout) --
+    // pain/fatigue stay per-day, representing the most recently reported feeling that day.
+    var pts = [];
+    p.dailyLogs.forEach(function(l){ (l.sessions||[]).forEach(function(s){ pts.push({date:l.date, value:s.rpe}); }); });
+    return pts;
+  }
+  if(param.key==="pain" || param.key==="fatigue"){
+    return p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date, value:l[param.key]};});
+  }
+  if(param.key.indexOf("mmt_")===0){
+    var muscleKey = param.key.slice(4);
+    return p.mmt.filter(function(f){return f[muscleKey]!=null;}).map(function(f){return {date:f.date, value:f[muscleKey]};});
+  }
+  if(param.key.indexOf("fom_")===0){
+    var measureKey = param.key.slice(4);
+    return p.fom.filter(function(f){return f[measureKey]!=null;}).map(function(f){return {date:f.date, value:f[measureKey]};});
+  }
+  return [];
+}
+
 function renderPatientTrends(p){
   var html = '<div class="card"><h2>Adherence</h2>';
   var loggedRecent = p.dailyLogs.filter(function(l){return l.logged;});
@@ -2353,17 +2405,28 @@ function renderPatientTrends(p){
   var pct = loggedRecent.length ? Math.round(100*completedRecent.length/loggedRecent.length) : 0;
   html += '<p>Overall adherence: <strong>'+pct+'%</strong> ('+completedRecent.length+' of '+loggedRecent.length+' logged days completed)</p></div>';
 
-  html += '<div class="card"><h2>RPE / Pain / Fatigue over time</h2>';
-  // RPE is plotted per session, not per day, now that a day can hold more than one (a day with
-  // two sessions contributes two points at that date) -- pain/fatigue stay per-day, since they
-  // represent the most recently reported feeling that day rather than a specific session.
-  var rpePoints = [];
-  p.dailyLogs.forEach(function(l){ (l.sessions||[]).forEach(function(s){ rpePoints.push({date:l.date, value:s.rpe}); }); });
-  var series = [
-    {name:"RPE", color:"#2563a6", points: rpePoints},
-    {name:"Pain", color:"#b3241c", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.pain};})},
-    {name:"Fatigue", color:"#9a6b00", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.fatigue};})}
-  ];
+  var params = trendParamsFor(p);
+  var sections = [];
+  params.forEach(function(param){
+    var sec = sections.filter(function(s){return s.name===param.section;})[0];
+    if(!sec){ sec = {name:param.section, params:[]}; sections.push(sec); }
+    sec.params.push(param);
+  });
+
+  html += '<div class="card"><h2>Choose what to plot</h2>'+
+    '<p class="muted">Pick any combination. Measures on different scales (e.g. a functional measure vs. muscle strength) show as separate charts below instead of being misleadingly overlaid on one.</p>';
+  sections.forEach(function(sec){
+    html += '<p class="muted" style="font-weight:700;margin:12px 0 4px;">'+escapeHtml(sec.name)+'</p><div class="row" style="gap:6px 18px;">';
+    sec.params.forEach(function(param){
+      var checked = State.trendsSelected.indexOf(param.key)>=0;
+      html += '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;min-height:32px;">'+
+        '<input type="checkbox" '+(checked?"checked":"")+' onchange="Actions.toggleTrendParam(\''+param.key+'\')"> '+escapeHtml(param.label)+
+      '</label>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+
   // svgLineChart's default width (560px) is wider than most phone screens, so this (the primary
   // patient-facing chart, viewed mostly on mobile) was silently overflowing its card and scrolling
   // horizontally -- the end-date label and a good chunk of the data sat off-screen unless the
@@ -2371,8 +2434,33 @@ function renderPatientTrends(p){
   // actual viewport avoids that outright, and avoids the alternative (CSS-scaling a fixed-width
   // SVG down to fit) shrinking the text to the point of being unreadable.
   var chartWidth = Math.max(260, Math.min(560, window.innerWidth - 72));
-  html += svgLineChart(series, {yMin:0, yMax:10, width:chartWidth});
-  html += '</div>';
+  var selected = params.filter(function(param){ return State.trendsSelected.indexOf(param.key)>=0; });
+  var groups = [];
+  selected.forEach(function(param){
+    var g = groups.filter(function(gr){return gr.key===param.group;})[0];
+    if(!g){ g = {key:param.group, params:[]}; groups.push(g); }
+    g.params.push(param);
+  });
+  if(!groups.length){
+    html += '<div class="card"><p class="muted">Nothing selected above yet — pick at least one measure to see a chart.</p></div>';
+  }
+  groups.forEach(function(g){
+    var series = g.params.map(function(param){
+      return {name:param.label, color:param.color, points: trendParamPoints(p, param)};
+    });
+    var title = g.params.map(function(param){return param.label;}).join(" / ");
+    html += '<div class="card"><h2>'+escapeHtml(title)+' over time</h2>';
+    if(!series.some(function(s){return s.points.length;})){
+      html += '<p class="muted">No data recorded yet.</p>';
+    } else {
+      var opts = {width:chartWidth};
+      if(g.key==="effort"){ opts.yMin=0; opts.yMax=10; }
+      else if(g.key==="mmt"){ opts.yMin=0; opts.yMax=5; }
+      else if(g.key==="fom_ibmfrsTotal"){ opts.yMin=0; opts.yMax=40; }
+      html += svgLineChart(series, opts);
+    }
+    html += '</div>';
+  });
 
   html += '<div class="card"><h2>Functional outcome measures</h2>';
   if(!p.fom.length) html += '<p class="muted">No measures recorded yet.</p>';
