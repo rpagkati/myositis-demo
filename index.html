@@ -160,7 +160,6 @@
   .dash-hero{padding:6px 2px 18px;}
   .dash-greeting-eyebrow{margin:0;color:var(--muted);font-size:13px;font-weight:600;}
   .dash-greeting-name{margin:2px 0 0;font-size:27px;font-weight:800;color:var(--text);line-height:1.2;}
-  .chip{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap;}
   .dash-cta-card{padding:22px 18px;}
   .dash-stats-card{display:flex;align-items:center;gap:18px;}
   .stat-ring-wrap{position:relative;width:84px;height:84px;flex-shrink:0;}
@@ -190,6 +189,16 @@ var STORAGE_KEY = "myositisCompanionData_v1";
 var SHARING_API_BASE = "";
 function sharingApiUrl(path){ return SHARING_API_BASE.replace(/\/$/,"") + path; }
 var CATEGORIES = ["Core","Targeted","Endurance","Aerobic"];
+// Time-period presets for the clinician's FOM/MMT trend charts (see renderTrendRangePicker/
+// trendRangeBounds). "custom" pairs with State.clinicianTrendRange.customStart/customEnd.
+var TREND_RANGE_PRESETS = [
+  {key:"all", label:"All time"},
+  {key:"ytd", label:"Year to date"},
+  {key:"3m", label:"Last 3 months"},
+  {key:"6m", label:"Last 6 months"},
+  {key:"1y", label:"Last year"},
+  {key:"custom", label:"Custom range"}
+];
 var RECOVERY_LABELS = {
   under30:"Recovered < 30 min", between30and60:"Recovered 30–60 min",
   over60:"Recovered > 60 min", notRecovered:"Not recovered"
@@ -929,6 +938,7 @@ var State = {
   fomMeasure:"gaitSpeed",
   mmtMuscle:"hipFlexors",
   trendsSelected:["rpe","pain","fatigue"], // which parameters the patient Trends tab's multi-select chart picker currently has checked; see trendParamsFor/Actions.toggleTrendParam
+  clinicianTrendRange:{preset:"all", customStart:null, customEnd:null}, // shared by the clinician's FOM and MMT trend charts; see TREND_RANGE_PRESETS/trendRangeBounds/Actions.setClinicianTrendRange
   checkinDraft:null,
   sharingStatusByPatient:{}, // patientId -> last-fetched {sharingEnabled, link} from the backend
   sharingBusy:false,
@@ -967,6 +977,14 @@ Actions.setMmtMuscle = function(v){ State.mmtMuscle=v; render(); };
 Actions.toggleTrendParam = function(key){
   var idx = State.trendsSelected.indexOf(key);
   if(idx>=0) State.trendsSelected.splice(idx,1); else State.trendsSelected.push(key);
+  render();
+};
+Actions.setClinicianTrendRange = function(preset){
+  State.clinicianTrendRange.preset = preset;
+  render();
+};
+Actions.setClinicianTrendCustomDate = function(field, val){
+  State.clinicianTrendRange[field] = val || null;
   render();
 };
 
@@ -1826,19 +1844,13 @@ function renderPatientDashboard(p){
   var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
 
   // Greeting sits directly on the page background rather than in a bordered card -- a time-of-day
-  // greeting by first name feels more like arriving at a personal home screen than a form, and the
-  // diagnosis/sessions/RPE metadata (previously one dense run-on muted sentence, including a
-  // dev-facing "(demo field)" aside -- redundant anyway given the permanent research-prototype
-  // banner at the top of every screen) is now a few lightweight chips instead, so it reads as
-  // reference context rather than the main content.
+  // greeting by first name feels more like arriving at a personal home screen than a form. The
+  // diagnosis/sessions/RPE metadata that used to run on as a dense sentence (then as chips) is
+  // gone entirely now -- it's reference detail the patient doesn't need re-shown every time they
+  // open the app, not something the home screen needs to lead with.
   var html = '<div class="dash-hero">'+
     '<p class="dash-greeting-eyebrow">'+timeOfDayGreeting()+'</p>'+
     '<h1 class="dash-greeting-name">'+escapeHtml(p.name.split(" ")[0])+'</h1>'+
-    '<div class="row" style="gap:6px;margin-top:10px;">'+
-      '<span class="chip">'+escapeHtml(p.diagnosisSubtype)+'</span>'+
-      '<span class="chip">🎯 '+p.sessionsPerWeek+'x/week</span>'+
-      '<span class="chip">RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</span>'+
-    '</div>'+
   '</div>';
 
   // Primary call-to-action: starting a workout is the main thing a patient opens this app to do,
@@ -2746,6 +2758,39 @@ function renderClinicianProgram(p){
   return html;
 }
 
+// ---- Clinician FOM/MMT trend charts: shared time-period filter ----
+// Resolves a {preset, customStart, customEnd} range (see TREND_RANGE_PRESETS) to concrete
+// {start, end} ISO date bounds. Only ever narrows what's PLOTTED on the trend chart -- the raw
+// data table underneath always shows every recorded entry, so filtering the chart's view never
+// hides data from the record, just from that one chart.
+function trendRangeBounds(range){
+  var today = todayISO();
+  if(range.preset==="ytd") return {start: today.slice(0,4)+"-01-01", end: today};
+  if(range.preset==="3m") return {start: addDaysISO(today,-90), end: today};
+  if(range.preset==="6m") return {start: addDaysISO(today,-180), end: today};
+  if(range.preset==="1y") return {start: addDaysISO(today,-365), end: today};
+  if(range.preset==="custom") return {start: range.customStart||null, end: range.customEnd||null};
+  return {start:null, end:null}; // "all"
+}
+function filterPointsByRange(points, bounds){
+  return points.filter(function(pt){
+    return (!bounds.start || pt.date>=bounds.start) && (!bounds.end || pt.date<=bounds.end);
+  });
+}
+function renderTrendRangePicker(){
+  var range = State.clinicianTrendRange;
+  var html = '<div class="field"><label for="trendRangeSelect">Time period</label><select id="trendRangeSelect" onchange="Actions.setClinicianTrendRange(this.value)">'+
+    TREND_RANGE_PRESETS.map(function(r){ return '<option value="'+r.key+'"'+(range.preset===r.key?" selected":"")+'>'+r.label+'</option>'; }).join("")+
+    '</select></div>';
+  if(range.preset==="custom"){
+    html += '<div class="row" style="gap:12px;">'+
+      '<div class="field"><label for="trendRangeStart">From</label><input id="trendRangeStart" type="date" value="'+(range.customStart||"")+'" max="'+todayISO()+'" onchange="Actions.setClinicianTrendCustomDate(\'customStart\', this.value)"></div>'+
+      '<div class="field"><label for="trendRangeEnd">To</label><input id="trendRangeEnd" type="date" value="'+(range.customEnd||"")+'" max="'+todayISO()+'" onchange="Actions.setClinicianTrendCustomDate(\'customEnd\', this.value)"></div>'+
+    '</div>';
+  }
+  return html;
+}
+
 function renderClinicianFom(p){
   var isIbm = isIbmPatient(p);
   var measures = fomMeasuresFor(p);
@@ -2794,9 +2839,12 @@ function renderClinicianFom(p){
   html += '<div class="card"><h2>Trend</h2><div class="field"><label for="fomMeasureSelect">Measure</label><select id="fomMeasureSelect" onchange="Actions.setFomMeasure(this.value)">'+
     measures.map(function(m){ return '<option value="'+m.key+'"'+(activeMeasure===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
     '</select></div>';
+  html += renderTrendRangePicker();
   var pts = p.fom.filter(function(f){ return f[activeMeasure]!=null; }).map(function(f){ return {date:f.date, value:f[activeMeasure]}; });
+  pts = filterPointsByRange(pts, trendRangeBounds(State.clinicianTrendRange));
   var chartOpts = activeMeasure==="ibmfrsTotal" ? {yMin:0, yMax:40} : {};
-  html += svgLineChart([{name:measureDef.label, color:"#2563a6", points:pts}], chartOpts);
+  if(!pts.length) html += '<p class="muted">No measurements in this time period.</p>';
+  else html += svgLineChart([{name:measureDef.label, color:"#2563a6", points:pts}], chartOpts);
   html += '<table><tr><th>Date</th>'+measures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
   p.fom.slice().reverse().forEach(function(f){
     html += '<tr><td>'+fmtDate(f.date)+'</td>'+measures.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
@@ -2840,8 +2888,11 @@ function renderClinicianMmt(p){
   html += '<div class="card"><h2>Trend</h2><div class="field"><label for="mmtMuscleSelect">Muscle group</label><select id="mmtMuscleSelect" onchange="Actions.setMmtMuscle(this.value)">'+
     MUSCLES.map(function(m){ return '<option value="'+m.key+'"'+(State.mmtMuscle===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
     '</select></div>';
+  html += renderTrendRangePicker();
   var pts = p.mmt.filter(function(f){ return f[State.mmtMuscle]!=null; }).map(function(f){ return {date:f.date, value:f[State.mmtMuscle]}; });
-  html += svgLineChart([{name:MUSCLES.find(function(m){return m.key===State.mmtMuscle;}).label, color:"#7a2ea6", points:pts}], {yMin:0,yMax:5});
+  pts = filterPointsByRange(pts, trendRangeBounds(State.clinicianTrendRange));
+  if(!pts.length) html += '<p class="muted">No measurements in this time period.</p>';
+  else html += svgLineChart([{name:MUSCLES.find(function(m){return m.key===State.mmtMuscle;}).label, color:"#7a2ea6", points:pts}], {yMin:0,yMax:5});
   html += '<table><tr><th>Date</th>'+MUSCLES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
   p.mmt.slice().reverse().forEach(function(f){
     html += '<tr><td>'+fmtDate(f.date)+'</td>'+MUSCLES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
