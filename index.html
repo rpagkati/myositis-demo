@@ -1073,6 +1073,7 @@ Actions.saveDailyLog = function(ev){
   if(!existing) p.dailyLogs.push(entry);
   saveData();
   render();
+  Actions.showToast("✓ Saved today's log.", "success");
 };
 
 // Entry point for starting today's exercise session -- from the Dashboard's primary CTA, or the
@@ -2336,12 +2337,34 @@ function renderLibrary(){
   html += '<select onchange="Actions.setLibraryFilter(\'region\', this.value)">'+regions.map(function(r){ return '<option value="'+r+'"'+(f.region===r?" selected":"")+'>'+r+'</option>'; }).join("")+'</select>';
   html += '</div>';
   if(!items.length) html += '<p class="muted">No exercises match your filters.</p>';
-  items.forEach(function(e){
-    html += '<div class="lib-item" style="display:flex;gap:12px;align-items:flex-start;">'+
+
+  function renderLibItem(e){
+    return '<div class="lib-item" style="display:flex;gap:12px;align-items:flex-start;">'+
       '<div style="flex:0 0 100px;">'+renderExerciseMedia(e.name, 100)+'</div>'+
       '<div style="flex:1;min-width:0;"><div class="region">'+e.region+' &middot; '+e.category+'</div><strong>'+e.name+'</strong><p class="muted" style="margin:4px 0 0;">'+e.desc+'</p><p class="muted" style="margin:2px 0 0;">Equipment: '+e.equipment+'</p></div>'+
     '</div>';
-  });
+  }
+
+  // Grouped into collapsible sections by category (Core/Targeted/Endurance/Aerobic -- the same
+  // grouping used everywhere else in the app, e.g. the pill badges on My Program) when browsing
+  // with no active search/region filter, so finding one exercise means scanning ~4 category
+  // headers instead of scrolling past all 16. Once a filter has already narrowed the results,
+  // show a flat list instead -- otherwise an already-narrowed search would ALSO sit behind a
+  // click. <details>/<summary> is native, so each section is keyboard/screen-reader operable
+  // (Enter/Space to toggle) with no extra JS.
+  var isFiltering = !!f.search || f.region!=="All";
+  if(isFiltering || !items.length){
+    items.forEach(function(e){ html += renderLibItem(e); });
+  } else {
+    CATEGORIES.forEach(function(cat){
+      var catItems = items.filter(function(e){ return e.category===cat; });
+      if(!catItems.length) return;
+      html += '<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;padding:0 12px;">'+
+        '<summary style="cursor:pointer;font-weight:700;padding:12px 0;min-height:24px;">'+cat+' <span class="muted" style="font-weight:400;">('+catItems.length+')</span></summary>'+
+        '<div style="padding-bottom:4px;">'+catItems.map(renderLibItem).join("")+'</div>'+
+      '</details>';
+    });
+  }
   html += '</div>';
   return html;
 }
@@ -2364,7 +2387,14 @@ function renderPatientTrends(p){
     {name:"Pain", color:"#b3241c", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.pain};})},
     {name:"Fatigue", color:"#9a6b00", points: p.dailyLogs.filter(function(l){return l.logged;}).map(function(l){return {date:l.date,value:l.fatigue};})}
   ];
-  html += svgLineChart(series, {yMin:0, yMax:10});
+  // svgLineChart's default width (560px) is wider than most phone screens, so this (the primary
+  // patient-facing chart, viewed mostly on mobile) was silently overflowing its card and scrolling
+  // horizontally -- the end-date label and a good chunk of the data sat off-screen unless the
+  // patient noticed they could scroll it sideways. Sizing the chart's own coordinate space to the
+  // actual viewport avoids that outright, and avoids the alternative (CSS-scaling a fixed-width
+  // SVG down to fit) shrinking the text to the point of being unreadable.
+  var chartWidth = Math.max(260, Math.min(560, window.innerWidth - 72));
+  html += svgLineChart(series, {yMin:0, yMax:10, width:chartWidth});
   html += '</div>';
 
   html += '<div class="card"><h2>Functional outcome measures</h2>';
