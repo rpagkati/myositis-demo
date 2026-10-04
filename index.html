@@ -1893,15 +1893,17 @@ function renderPatientDashboard(p){
 
 function renderPatientLog(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
-  var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
   var sessionCount = todayLog.sessions ? todayLog.sessions.length : 0;
-  var html = '<div class="card"><h2>Daily Log — '+fmtDate(todayISO())+'</h2>';
+  var html = '<div class="card">'+
+    '<a href="#" onclick="Actions.setPatientView(\'dashboard\'); return false;" style="font-size:13px;">← Back to Dashboard</a>'+
+    '<h2 style="margin-top:8px;">Daily Log — '+fmtDate(todayISO())+'</h2>';
   if(sessionCount>0){
     html += '<div class="alert alert-success">'+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. The fields below update how you’re feeling, not your sessions.</div>';
   }
-  if(canExercise){
-    html += '<p class="muted" style="margin-top:0;">'+(sessionCount>0?"Doing another session?":"Ready to exercise?")+' <button type="button" class="btn secondary" onclick="Actions.startWorkout(\''+p.id+'\')">▶ '+(sessionCount>0?"Start Another Session":"Start Today’s Workout")+'</button> No need to fill in the form below first.</p>';
-  }
+  // Deliberately no "Start exercising" shortcut here: a patient reaches this page specifically to
+  // just log how they're feeling without exercising (see the dashboard's "Not exercising today?"
+  // link), so offering a workout button right back at them undercuts that choice. Starting a
+  // session is still one tap away via the Dashboard tab if they change their mind.
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
   html += '<div class="grid">';
