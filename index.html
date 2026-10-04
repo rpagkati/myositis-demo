@@ -20,8 +20,13 @@
   :root{
     --bg:#f2f5f8; --surface:#ffffff; --text:#1c2530; --muted:#5b6b7b; --border:#dbe3ea;
     --primary:#2563a6; --primary-dark:#194673; --primary-bg:#e8f0fa;
-    --success:#1f8a55; --success-bg:#e7f6ee;
-    --warning:#9a6b00; --warning-bg:#fff6df;
+    /* --success/--warning are a touch darker than the obvious "brand green/amber" would suggest --
+       both get used as TEXT on their own light -bg (chips, alerts) and as a white-text BACKGROUND
+       elsewhere (success-banner, stepper plus button), and the lighter originals (#1f8a55,
+       #9a6b00) fell short of WCAG AA's 4.5:1 in one or both directions. These pass 4.5:1 against
+       success-bg/warning-bg (their worst-case use) and against white. */
+    --success:#1c7e4e; --success-bg:#e7f6ee;
+    --warning:#966800; --warning-bg:#fff6df;
     --danger:#b3241c; --danger-bg:#fdeceb;
     --radius:10px; --shadow:0 1px 3px rgba(20,30,40,.08);
   }
@@ -32,7 +37,7 @@
   header.topnav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;position:sticky;top:34px;z-index:150;box-shadow:var(--shadow);}
   header.topnav h1{font-size:16px;margin:0;color:var(--primary-dark);white-space:nowrap;}
   .role-toggle{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:3px;}
-  .role-toggle button{border:none;background:transparent;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .role-toggle button{border:none;background:transparent;padding:6px 14px;min-height:40px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);}
   .role-toggle button.active{background:var(--primary);color:#fff;}
   select, input[type=text], input[type=number], input[type=date], textarea{
     font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);
@@ -43,12 +48,16 @@
   button.btn.secondary{background:#fff;color:var(--primary);}
   button.btn.danger{background:var(--danger);border-color:var(--danger);}
   button.btn.ghost{background:transparent;border-color:var(--border);color:var(--text);}
-  button.btn.success{background:var(--success);border-color:var(--success);}
-  button.btn.success:hover{background:#16703f;}
+  /* Slightly darker than --success: white text on var(--success) is only 4.35:1 (fails WCAG AA's
+     4.5:1 for normal-size text); #16703f gets white text to 6.13:1 while still reading as the
+     same green. Only this button's own color changes -- --success itself stays as-is since it's
+     also used as a text color elsewhere (chips, alerts) where it already passes AA on its own. */
+  button.btn.success{background:#16703f;border-color:#16703f;}
+  button.btn.success:hover{background:#125c33;}
   button.btn:disabled{opacity:.45;cursor:not-allowed;}
   main{max-width:1080px;margin:0 auto;padding:18px 16px 60px;}
   .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
-  .tabs button{border:1px solid var(--border);background:#fff;padding:7px 13px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .tabs button{border:1px solid var(--border);background:#fff;padding:7px 13px;min-height:40px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);}
   .tabs button.active{background:var(--primary-bg);color:var(--primary-dark);border-color:var(--primary);}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
   .card h2{margin:0 0 10px;font-size:15px;}
@@ -103,7 +112,10 @@
   .stepper button.minus{background:#fff;}
   .stepper input{width:64px;text-align:center;font-size:24px;font-weight:800;padding:8px 4px;}
   .rpe-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-top:6px;}
-  .rpe-grid button{padding:7px 0;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--text);}
+  /* min-height:44px matches the WCAG 2.5.5/Apple HIG minimum touch-target size -- this is the
+     core 0-10 scale control used throughout the app, on screens patients use while fatigued, so
+     tap-target size matters more here than almost anywhere else. */
+  .rpe-grid button{padding:7px 0;min-height:44px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--text);}
   .rpe-grid button.rpe-low{background:var(--success-bg);border-color:var(--success);}
   .rpe-grid button.rpe-mid{background:var(--warning-bg);border-color:var(--warning);}
   .rpe-grid button.rpe-high{background:var(--danger-bg);border-color:var(--danger);}
@@ -135,6 +147,10 @@
   footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
   .skip-link{position:absolute;top:-40px;left:8px;z-index:300;background:var(--primary-dark);color:#fff;padding:8px 14px;border-radius:0 0 8px 8px;font-size:13px;font-weight:600;text-decoration:none;transition:top .15s;}
   .skip-link:focus{top:0;}
+  /* Small text links that are still real tap targets (padding + min-height), not just bare text --
+     used for e.g. "Skip this exercise"/"Previous exercise", tapped mid-session by patients who may
+     have reduced grip/finger precision. */
+  .tap-link{display:inline-flex;align-items:center;padding:10px 6px;min-height:44px;font-size:13px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -2036,8 +2052,8 @@ function renderExerciseRpePrompt(){
       '<button type="button" class="btn success" style="padding:12px 24px;font-size:15px;" onclick="Actions.revealExerciseLog()">✓ Click when you’re done</button>'+
     '</div>'+
     '<div class="row" style="justify-content:'+(flow.index>0?"space-between":"center")+';margin:6px 0 4px;">'+
-      (flow.index>0 ? '<a href="#" onclick="Actions.goToPreviousExercise(); return false;" style="font-size:13px;color:var(--muted);">← Previous exercise</a>' : '')+
-      '<a href="#" onclick="Actions.skipExercise(); return false;" style="font-size:13px;color:var(--muted);">Skip this exercise →</a>'+
+      (flow.index>0 ? '<a href="#" class="tap-link" onclick="Actions.goToPreviousExercise(); return false;">← Previous exercise</a>' : '')+
+      '<a href="#" class="tap-link" onclick="Actions.skipExercise(); return false;">Skip this exercise →</a>'+
     '</div>'+
     '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
