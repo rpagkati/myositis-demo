@@ -902,7 +902,6 @@ var State = {
   pdfError:null,
   exerciseRpeFlow:null, // {patientId, index, ratings:[{name,setsCompleted,repsCompleted,rpe}]} walking through each phaseDosage exercise after Actions.startWorkout, before the whole-session wrap-up
   exerciseJustArrived:false, // one-shot flag, true only during the single render() that first shows a given exercise (session start, or advancing to the next one), so its video autoplays exactly once; see Actions.startWorkout/advanceExerciseRpeFlow/renderExerciseMedia
-  counterAudioOn:true, // whether tapping the sets/reps steppers speaks the new count aloud; see Actions.speak/toggleCounterAudio
   exerciseLogRevealed:false, // whether the per-exercise goal/RPE logging section is showing yet -- stays false (hidden, minimal screen) until the patient signals they're done with that exercise; see Actions.revealExerciseLog, reset per exercise in Actions.startWorkout/advanceExerciseRpeFlow
   pendingRpePrompt:null, // {patientId, exerciseRpes} set once the per-exercise walkthrough finishes, before renderSessionWrapupPrompt/Actions.submitSessionWrapup collects overall RPE + pain/fatigue + follow-ups
   postSessionSummary:null // {patientId, rpe, pain, fatigue, exerciseRpes, advancedExerciseName} set once the session wrap-up has been submitted
@@ -1198,7 +1197,6 @@ Actions.confirmGoalMet = function(){
   document.getElementById("goalAsk").style.display = "none";
   document.getElementById("goalAdjustFields").style.display = "none";
   document.getElementById("goalYesConfirmed").style.display = "block";
-  Actions.speak("Goal met");
 };
 Actions.showGoalAdjust = function(){
   document.getElementById("goalAsk").style.display = "none";
@@ -1238,36 +1236,19 @@ Actions.toggleWrapupFollowup = function(related){
   }
 };
 
-// ---- Accessible sets/reps entry (stepper buttons + spoken count) ----
+// ---- Accessible sets/reps entry (stepper buttons) ----
 // A patient with hand weakness or fatigue may find a tiny number-spinner or typing on a phone
 // keyboard harder than tapping a large button -- these +/- buttons sit beside the existing
 // number input and just nudge its value directly (no full render per tap, same
 // "don't re-render mid-interaction" reasoning as the pacing slider), so the input itself stays
-// the single source of truth the form already reads on submit. Speaking the new count aloud
-// (built into every modern browser, no external service) means they don't have to look at the
-// screen to confirm a tap registered -- useful mid-exercise, e.g. lying down for a supine set.
-// Entirely optional: the number input can still be typed into directly, and audio can be muted.
+// the single source of truth the form already reads on submit. The number input can still be
+// typed into directly too.
 Actions.stepCounterInput = function(inputId, delta){
   var el = document.getElementById(inputId);
   if(!el) return;
   var min = el.min!==""?Number(el.min):0, max = el.max!==""?Number(el.max):999;
   var next = Math.max(min, Math.min(max, (Number(el.value)||0) + delta));
   el.value = next;
-  Actions.speak(next);
-};
-Actions.toggleCounterAudio = function(){
-  State.counterAudioOn = !State.counterAudioOn;
-  render();
-};
-Actions.speak = function(text){
-  if(!State.counterAudioOn) return;
-  if(!window.speechSynthesis || typeof SpeechSynthesisUtterance==="undefined") return;
-  try{
-    window.speechSynthesis.cancel(); // don't let rapid taps queue up a backlog of utterances
-    var u = new SpeechSynthesisUtterance(String(text));
-    u.rate = 1.1;
-    window.speechSynthesis.speak(u);
-  }catch(e){ /* speech synthesis unavailable/blocked -- silently skip, it's a nice-to-have */ }
 };
 
 // ---- Accessible 0-10 scale entry (large tap-to-select buttons instead of typing a number) ----
@@ -1649,11 +1630,11 @@ function render(){
 // the page -- Tab still reaches "inert" background content behind the overlay, and nothing tells
 // a screen reader a dialog opened at all.
 //
-// lastModalFocusKey tracks which modal was last focused so that a same-modal re-render (e.g.
-// toggling "Spoken count" mid-exercise, which calls a full render()) doesn't yank focus away from
-// whatever the patient just tapped -- focus only jumps when a genuinely different modal appears,
-// or (via each exercise's own data-modal-id="exercise-<index>") when the walkthrough advances to
-// a different exercise.
+// lastModalFocusKey tracks which modal was last focused so that a same-modal re-render (anything
+// that calls a full render() without actually changing which modal/exercise is showing) doesn't
+// yank focus away from whatever the patient just tapped -- focus only jumps when a genuinely
+// different modal appears, or (via each exercise's own data-modal-id="exercise-<index>") when the
+// walkthrough advances to a different exercise.
 //
 // Escape triggers whatever button is marked [data-modal-dismiss] in the topmost modal, if any --
 // deliberately NOT added to a modal with no safe dismiss path even by mouse (e.g. the session
@@ -2113,9 +2094,6 @@ function renderExerciseRpePrompt(){
     '</div>'+
     '<div id="exerciseLogWrap" style="display:'+(State.exerciseLogRevealed?"block":"none")+';">'+
     '<form onsubmit="Actions.submitExerciseRpe(event)">'+
-      '<div class="row" style="justify-content:flex-end;margin:10px 0 -4px;">'+
-        '<button type="button" class="btn ghost" style="padding:4px 10px;font-size:12px;" onclick="Actions.toggleCounterAudio()">'+(State.counterAudioOn?"🔊 Spoken count: on":"🔇 Spoken count: off")+'</button>'+
-      '</div>'+
       '<div id="goalAsk" style="margin-bottom:10px;">'+
         '<p style="text-align:center;font-weight:600;margin:0 0 8px;">Did you complete '+exercise.currentSets+' sets × '+exercise.targetReps+' reps?</p>'+
         '<div class="row" style="justify-content:center;gap:10px;">'+
@@ -2295,8 +2273,7 @@ function renderExerciseMedia(name, widthPx, embed, autoplay){
     // exercise (State.exerciseJustArrived -- see Actions.startWorkout/advanceExerciseRpeFlow),
     // so the video starts playing the moment the session (or the next exercise) begins, without
     // needing a separate tap to press play. That flag clears immediately after, so a later
-    // full render() of this same exercise (e.g. toggling the spoken-count setting) doesn't
-    // restart the video from 0:00.
+    // full render() of this same exercise doesn't restart the video from 0:00.
     media = '<div style="position:relative;padding-top:56.25%;border-radius:8px;overflow:hidden;background:#000;">'+
       '<iframe src="https://www.youtube.com/embed/'+ytId+(autoplay?"?autoplay=1":"")+'" title="'+escapeHtml(name)+' demo video" '+
         'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" '+
