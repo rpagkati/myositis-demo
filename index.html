@@ -1134,16 +1134,6 @@ Actions.saveDailyLog = function(ev){
   if(!existing) p.dailyLogs.push(entry);
   saveData();
   render();
-  // Clear the form after a successful save so it doesn't look like it's still showing
-  // unsaved input -- the just-saved values are confirmed in the "Recent history" table below.
-  var painInput = document.getElementById("dailyLogPainInput");
-  var fatigueInput = document.getElementById("dailyLogFatigueInput");
-  var postExBox = document.getElementById("dailyLogPostExerciseRelatedBox");
-  var adlBox = document.getElementById("dailyLogAdlImpactBox");
-  if(painInput) painInput.value = "";
-  if(fatigueInput) fatigueInput.value = "";
-  if(postExBox) postExBox.checked = false;
-  if(adlBox) adlBox.checked = false;
   Actions.showToast("✓ Saved today's log.", "success");
 };
 
@@ -1910,18 +1900,25 @@ function renderPatientLog(p){
   if(sessionCount>0){
     html += '<div class="alert alert-success">'+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. The fields below update how you’re feeling, not your sessions.</div>';
   }
+  if(todayLog.logged){
+    html += '<div class="alert alert-info">Already logged pain '+todayLog.pain+' / fatigue '+todayLog.fatigue+' today (see Recent history below). Saving again below will update it.</div>';
+  }
   // Deliberately no "Start exercising" shortcut here: a patient reaches this page specifically to
   // just log how they're feeling without exercising (see the dashboard's "Not exercising today?"
   // link), so offering a workout button right back at them undercuts that choice. Starting a
   // session is still one tap away via the Dashboard tab if they change their mind.
+  // Fields are always blank/unchecked on render, even if today's entry already exists --
+  // today's saved values are confirmed above and in the Recent history table, not by pre-filling
+  // this form (pre-filling made a cleared-after-save form look "uncleared" again on the very next
+  // render, e.g. navigating away and back).
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
   html += '<div class="grid">';
-  html += '<div class="field"><label for="dailyLogPainInput">Pain (0–10)</label><input id="dailyLogPainInput" type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
-  html += '<div class="field"><label for="dailyLogFatigueInput">Fatigue (0–10)</label><input id="dailyLogFatigueInput" type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '<div class="field"><label for="dailyLogPainInput">Pain (0–10)</label><input id="dailyLogPainInput" type="number" name="pain" min="0" max="10" value="" required></div>';
+  html += '<div class="field"><label for="dailyLogFatigueInput">Fatigue (0–10)</label><input id="dailyLogFatigueInput" type="number" name="fatigue" min="0" max="10" value="" required></div>';
   html += '</div>';
-  html += '<div class="field"><label><input id="dailyLogPostExerciseRelatedBox" type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
-  html += '<div class="field"><label><input id="dailyLogAdlImpactBox" type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
+  html += '<div class="field"><label><input id="dailyLogPostExerciseRelatedBox" type="checkbox" name="postExerciseRelated"> This pain/fatigue is related to my last exercise session</label></div>';
+  html += '<div class="field"><label><input id="dailyLogAdlImpactBox" type="checkbox" name="adlImpact"> This is affecting my daily activities</label></div>';
 
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
