@@ -101,6 +101,10 @@
   .exercise-item .head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
   .history-list{font-size:11.5px;color:var(--muted);margin-top:6px;padding-left:16px;}
   .chart-wrap{overflow-x:auto;}
+  /* Tables with many columns (FOM measures, MMT muscles, session history) are wider than a phone
+     screen -- without this they silently overflow their card, spilling text past the card's right
+     edge onto the page background instead of wrapping or scrolling. */
+  .table-wrap{overflow-x:auto;}
   svg.chart text{font-size:9.5px;fill:var(--muted);font-family:inherit;}
   .yesno{display:flex;gap:8px;}
   .yesno button{flex:1;padding:9px;border-radius:6px;border:1px solid var(--border);background:#fff;font-weight:600;cursor:pointer;}
@@ -194,9 +198,9 @@ var CATEGORIES = ["Core","Targeted","Endurance","Aerobic"];
 var TREND_RANGE_PRESETS = [
   {key:"all", label:"All time"},
   {key:"ytd", label:"Year to date"},
-  {key:"3m", label:"Last 3 months"},
-  {key:"6m", label:"Last 6 months"},
-  {key:"1y", label:"Last year"},
+  {key:"3m", label:"3 months"},
+  {key:"6m", label:"6 months"},
+  {key:"1y", label:"One year"},
   {key:"custom", label:"Custom range"}
 ];
 var RECOVERY_LABELS = {
@@ -1754,7 +1758,7 @@ function renderTopNav(){
 /* ======================== Render: Patient role ======================== */
 function renderPatientRole(){
   var p = getPatient(State.patientId);
-  var tabs = [["dashboard","Dashboard"],["log","Daily Log"],["program","My Program"],["library","Exercise Library"],["trends","Trends"],["sharing","Sharing"]];
+  var tabs = [["dashboard","Dashboard"],["log","Daily Log"],["program","My Program"],["library","Exercise Library"],["sharing","Sharing"]];
   var html = '<main id="mainContent">';
   html += '<div class="tabs" role="tablist" aria-label="Patient sections">'+tabs.map(function(t){
     return '<button role="tab" aria-selected="'+(State.patientView===t[0]?"true":"false")+'" class="'+(State.patientView===t[0]?"active":"")+'" onclick="Actions.setPatientView(\''+t[0]+'\')">'+t[1]+'</button>';
@@ -1792,7 +1796,6 @@ function renderPatientRole(){
   else if(State.patientView==="log") html += renderPatientLog(p);
   else if(State.patientView==="program") html += renderPatientProgram(p);
   else if(State.patientView==="library") html += renderLibrary();
-  else if(State.patientView==="trends") html += renderPatientTrends(p);
   else if(State.patientView==="sharing") html += renderSharing(p);
 
   html += '</main>';
@@ -1911,7 +1914,7 @@ function renderPatientLog(p){
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
 
-  html += '<div class="card"><h2>Recent history</h2><table><tr><th>Date</th><th>Sessions</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Session details (RPE, sets×reps)</th></tr>';
+  html += '<div class="card"><h2>Recent history</h2><div class="table-wrap"><table><tr><th>Date</th><th>Sessions</th><th>Pain</th><th>Fatigue</th><th>Post-ex?</th><th>ADL impact?</th><th>Session details (RPE, sets×reps)</th></tr>';
   p.dailyLogs.filter(function(l){return l.logged;}).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14).forEach(function(l){
     var sessions = l.sessions || [];
     var detailHtml = sessions.length
@@ -1929,7 +1932,7 @@ function renderPatientLog(p){
       '<td>'+(l.adlImpact==null?"—":(l.adlImpact?"Yes":"No"))+'</td>'+
       '<td style="max-width:260px;">'+detailHtml+'</td></tr>';
   });
-  html += '</table></div>';
+  html += '</table></div></div>';
   return html;
 }
 
@@ -2044,10 +2047,7 @@ function renderExercisePhoto(name){
   return '<div style="margin:14px 0;">'+
     '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
       '<p class="muted" style="margin:0;font-weight:700;font-size:13px;">📷 Exercise Photo Reference</p>'+
-      '<div class="row" style="gap:10px;">'+
-        '<a href="#" onclick="Actions.showExerciseZoom(\''+nameAttr+'\'); return false;" style="font-size:12px;">🔍 View larger</a>'+
-        '<a href="#" onclick="Actions.openExerciseReferenceTab(\''+nameAttr+'\'); return false;" style="font-size:12px;">↗ Open in new tab</a>'+
-      '</div>'+
+      '<a href="#" onclick="Actions.showExerciseZoom(\''+nameAttr+'\'); return false;" style="font-size:12px;">🔍 View larger</a>'+
     '</div>'+
     media+
     // Scrollable so a longer future instruction doesn't push the rest of the page down -- the
@@ -2114,33 +2114,6 @@ Actions.closeExerciseZoom = function(){
   var opener = el.__opener;
   el.remove();
   if(opener && typeof opener.focus==="function") opener.focus();
-};
-// Opens the same photos + instructions in a genuinely separate tab/window via window.open('')
-// + document.write -- not a data: URL (increasingly blocked as a top-level navigation target in
-// modern browsers) and not a render() of this page. Because it's a brand-new window object,
-// nothing in THIS page's DOM is touched, so the exercise video playing above keeps running the
-// whole time, exactly as if the patient had switched to a different app entirely.
-Actions.openExerciseReferenceTab = function(name){
-  var w = window.open("", "_blank");
-  if(!w) return; // popup blocked -- nothing more we can do here
-  w.document.write(
-    '<!doctype html><html><head><meta charset="utf-8">'+
-    '<meta name="viewport" content="width=device-width, initial-scale=1">'+
-    '<title>'+escapeHtml(name)+'</title>'+
-    '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:64px 16px 40px;color:#1c2530;}'+
-    'img{border-radius:10px;}h1{font-size:22px;}'+
-    // A patient opening this in a standalone installed-PWA context may have no browser chrome
-    // (no back/close button of its own), so this page must supply its own obvious way out.
-    // window.close() works here because this tab was opened by script (window.open), which is
-    // exactly the case browsers allow a page to close itself.
-    '.exit-tab-btn{position:fixed;top:12px;right:12px;background:#1c2530;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;}'+
-    '</style></head><body>'+
-    '<button type="button" class="exit-tab-btn" onclick="window.close()">✕ Close this tab</button>'+
-    '<h1>'+escapeHtml(name)+'</h1>'+
-    exerciseReferenceHtml(name, 31)+
-    '</body></html>'
-  );
-  w.document.close();
 };
 function renderExerciseRpePrompt(){
   var flow = State.exerciseRpeFlow;
@@ -2470,7 +2443,14 @@ function trendParamPoints(p, param){
   return [];
 }
 
-function renderPatientTrends(p){
+// Clinician-only tab (moved off the patient view entirely -- a patient doesn't need a
+// multi-parameter chart-building tool, that's a clinical-review task). Lets the clinician combine
+// any mix of RPE/Pain/Fatigue, MMT muscles, and FOM measures onto a shared time period, same
+// grouping-by-scale logic as before: parameters sharing a scale combine onto one chart, everything
+// else gets its own (see trendParamsFor's comment for why). Shares the same
+// State.clinicianTrendRange (and renderTrendRangePicker/trendRangeBounds) as the standalone FOM
+// and MMT trend charts, so a time period picked here carries over to those tabs and back.
+function renderClinicianTrends(p){
   var html = '<div class="card"><h2>Adherence</h2>';
   var loggedRecent = p.dailyLogs.filter(function(l){return l.logged;});
   var completedRecent = loggedRecent.filter(function(l){return l.completed;});
@@ -2487,6 +2467,7 @@ function renderPatientTrends(p){
 
   html += '<div class="card"><h2>Choose what to plot</h2>'+
     '<p class="muted">Pick any combination. Measures on different scales (e.g. a functional measure vs. muscle strength) show as separate charts below instead of being misleadingly overlaid on one.</p>';
+  html += renderTrendRangePicker();
   sections.forEach(function(sec){
     html += '<p class="muted" style="font-weight:700;margin:12px 0 4px;">'+escapeHtml(sec.name)+'</p><div class="row" style="gap:6px 18px;">';
     sec.params.forEach(function(param){
@@ -2499,13 +2480,11 @@ function renderPatientTrends(p){
   });
   html += '</div>';
 
-  // svgLineChart's default width (560px) is wider than most phone screens, so this (the primary
-  // patient-facing chart, viewed mostly on mobile) was silently overflowing its card and scrolling
-  // horizontally -- the end-date label and a good chunk of the data sat off-screen unless the
-  // patient noticed they could scroll it sideways. Sizing the chart's own coordinate space to the
-  // actual viewport avoids that outright, and avoids the alternative (CSS-scaling a fixed-width
-  // SVG down to fit) shrinking the text to the point of being unreadable.
+  // svgLineChart's default width (560px) is wider than most phone screens -- sizing the chart's
+  // own coordinate space to the actual viewport avoids silent horizontal overflow, and avoids the
+  // alternative (CSS-scaling a fixed-width SVG down to fit) shrinking the text to unreadable sizes.
   var chartWidth = Math.max(260, Math.min(560, window.innerWidth - 72));
+  var bounds = trendRangeBounds(State.clinicianTrendRange);
   var selected = params.filter(function(param){ return State.trendsSelected.indexOf(param.key)>=0; });
   var groups = [];
   selected.forEach(function(param){
@@ -2517,13 +2496,20 @@ function renderPatientTrends(p){
     html += '<div class="card"><p class="muted">Nothing selected above yet — pick at least one measure to see a chart.</p></div>';
   }
   groups.forEach(function(g){
-    var series = g.params.map(function(param){
+    var rawSeries = g.params.map(function(param){
       return {name:param.label, color:param.color, points: trendParamPoints(p, param)};
     });
+    var hasAnyData = rawSeries.some(function(s){return s.points.length;});
+    var series = rawSeries.map(function(s){
+      return {name:s.name, color:s.color, points: filterPointsByRange(s.points, bounds)};
+    });
+    var hasDataInRange = series.some(function(s){return s.points.length;});
     var title = g.params.map(function(param){return param.label;}).join(" / ");
     html += '<div class="card"><h2>'+escapeHtml(title)+' over time</h2>';
-    if(!series.some(function(s){return s.points.length;})){
+    if(!hasAnyData){
       html += '<p class="muted">No data recorded yet.</p>';
+    } else if(!hasDataInRange){
+      html += '<p class="muted">No measurements in this time period.</p>';
     } else {
       var opts = {width:chartWidth};
       if(g.key==="effort"){ opts.yMin=0; opts.yMax=10; }
@@ -2534,17 +2520,6 @@ function renderPatientTrends(p){
     html += '</div>';
   });
 
-  html += '<div class="card"><h2>Functional outcome measures</h2>';
-  if(!p.fom.length) html += '<p class="muted">No measures recorded yet.</p>';
-  else{
-    var patientMeasures = fomMeasuresFor(p);
-    html += '<table><tr><th>Date</th>'+patientMeasures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
-    p.fom.forEach(function(f){
-      html += '<tr><td>'+fmtDate(f.date)+'</td>'+patientMeasures.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
-    });
-    html += '</table>';
-  }
-  html += '</div>';
   return html;
 }
 
@@ -2647,12 +2622,13 @@ function renderClinicianDetail(p){
   var html = '<button class="btn ghost" style="margin-bottom:12px;" onclick="Actions.backToPatientList()">← Back to patient list</button>';
   html += '<div class="card"><h2>'+escapeHtml(p.name)+'</h2><p class="muted">'+escapeHtml(p.diagnosisSubtype)+' &middot; Local PT: '+escapeHtml(p.localPtName)+' &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p></div>';
 
-  var tabs = [["alerts","Alerts"],["program","Program"],["fom","Functional Measures"],["mmt","MMT"],["clearance","Clearance / Flare"],["pdfimport","PDF Import"]];
+  var tabs = [["alerts","Alerts"],["trends","Trends"],["program","Program"],["fom","Functional Measures"],["mmt","MMT"],["clearance","Clearance / Flare"],["pdfimport","PDF Import"]];
   html += '<div class="tabs" role="tablist" aria-label="Patient detail sections">'+tabs.map(function(t){
     return '<button role="tab" aria-selected="'+(State.clinicianDetailTab===t[0]?"true":"false")+'" class="'+(State.clinicianDetailTab===t[0]?"active":"")+'" onclick="Actions.setClinicianTab(\''+t[0]+'\')">'+t[1]+'</button>';
   }).join("")+'</div>';
 
   if(State.clinicianDetailTab==="alerts") html += renderClinicianAlerts(p);
+  else if(State.clinicianDetailTab==="trends") html += renderClinicianTrends(p);
   else if(State.clinicianDetailTab==="program") html += renderClinicianProgram(p);
   else if(State.clinicianDetailTab==="fom") html += renderClinicianFom(p);
   else if(State.clinicianDetailTab==="mmt") html += renderClinicianMmt(p);
@@ -2845,11 +2821,11 @@ function renderClinicianFom(p){
   var chartOpts = activeMeasure==="ibmfrsTotal" ? {yMin:0, yMax:40} : {};
   if(!pts.length) html += '<p class="muted">No measurements in this time period.</p>';
   else html += svgLineChart([{name:measureDef.label, color:"#2563a6", points:pts}], chartOpts);
-  html += '<table><tr><th>Date</th>'+measures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+  html += '<div class="table-wrap"><table><tr><th>Date</th>'+measures.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
   p.fom.slice().reverse().forEach(function(f){
     html += '<tr><td>'+fmtDate(f.date)+'</td>'+measures.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
   });
-  html += '</table></div>';
+  html += '</table></div></div>';
 
   if(isIbm) html += renderIbmfrsItemBreakdown(p);
   return html;
@@ -2893,11 +2869,11 @@ function renderClinicianMmt(p){
   pts = filterPointsByRange(pts, trendRangeBounds(State.clinicianTrendRange));
   if(!pts.length) html += '<p class="muted">No measurements in this time period.</p>';
   else html += svgLineChart([{name:MUSCLES.find(function(m){return m.key===State.mmtMuscle;}).label, color:"#7a2ea6", points:pts}], {yMin:0,yMax:5});
-  html += '<table><tr><th>Date</th>'+MUSCLES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
+  html += '<div class="table-wrap"><table><tr><th>Date</th>'+MUSCLES.map(function(m){return '<th>'+m.label+'</th>';}).join("")+'</tr>';
   p.mmt.slice().reverse().forEach(function(f){
     html += '<tr><td>'+fmtDate(f.date)+'</td>'+MUSCLES.map(function(m){return '<td>'+(f[m.key]!=null?f[m.key]:"—")+'</td>';}).join("")+'</tr>';
   });
-  html += '</table></div>';
+  html += '</table></div></div>';
   return html;
 }
 
