@@ -82,9 +82,11 @@
   .criteria-list li.pending{color:var(--muted);}
   .modal-overlay{position:fixed;inset:0;background:rgba(20,25,35,.55);display:flex;align-items:center;justify-content:center;z-index:500;padding:16px;}
   .modal{background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.3);}
+  .modal:focus{outline:2px solid var(--primary);outline-offset:2px;}
   .modal h2{margin-top:0;}
   .patient-card{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;cursor:pointer;background:#fff;transition:background .1s;}
   .patient-card:hover{background:var(--primary-bg);}
+  .patient-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
   .patient-card .name{font-weight:700;font-size:14px;}
   .exercise-item{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;}
   .exercise-item .head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
@@ -131,9 +133,12 @@
   .ibmfrs-item .item-label{font-size:11px;color:var(--muted);margin-bottom:4px;min-height:26px;}
   .ibmfrs-item .item-delta{font-size:12px;font-weight:700;margin-top:2px;}
   footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
+  .skip-link{position:absolute;top:-40px;left:8px;z-index:300;background:var(--primary-dark);color:#fff;padding:8px 14px;border-radius:0 0 8px 8px;font-size:13px;font-weight:600;text-decoration:none;transition:top .15s;}
+  .skip-link:focus{top:0;}
 </style>
 </head>
 <body>
+<a href="#mainContent" class="skip-link">Skip to main content</a>
 <div id="banner">
   <strong>Research Prototype</strong> — Seeded demo data only. Not connected to any real EHR or PHI. Not for clinical use.
 </div>
@@ -1563,6 +1568,57 @@ Actions.confirmPdfImport = function(){
 function render(){
   var app = el("app");
   app.innerHTML = renderTopNav() + (State.role==="patient" ? renderPatientRole() : renderClinicianRole());
+  setupModalA11y();
+}
+
+// ---- Modal accessibility: focus management + keyboard trap ----
+// Runs after every render() against whichever .modal-overlay is topmost (last in DOM order, in
+// the rare case more than one could coexist). Without this, a modal is just visually on top of
+// the page -- Tab still reaches "inert" background content behind the overlay, and nothing tells
+// a screen reader a dialog opened at all.
+//
+// lastModalFocusKey tracks which modal was last focused so that a same-modal re-render (e.g.
+// toggling "Spoken count" mid-exercise, which calls a full render()) doesn't yank focus away from
+// whatever the patient just tapped -- focus only jumps when a genuinely different modal appears,
+// or (via each exercise's own data-modal-id="exercise-<index>") when the walkthrough advances to
+// a different exercise.
+//
+// Escape triggers whatever button is marked [data-modal-dismiss] in the topmost modal, if any --
+// deliberately NOT added to a modal with no safe dismiss path even by mouse (e.g. the session
+// wrap-up, which requires an explicit choice), so Escape does nothing there rather than silently
+// discarding a required step.
+var lastModalFocusKey = null;
+var modalKeydownHandler = null;
+function topModalEl(){
+  var overlays = document.querySelectorAll(".modal-overlay");
+  return overlays.length ? overlays[overlays.length-1].querySelector(".modal") : null;
+}
+function setupModalA11y(){
+  if(modalKeydownHandler){ document.removeEventListener("keydown", modalKeydownHandler); modalKeydownHandler = null; }
+  var modal = topModalEl();
+  if(!modal){ lastModalFocusKey = null; return; }
+  if(!modal.hasAttribute("tabindex")) modal.setAttribute("tabindex","-1");
+  var focusKey = modal.getAttribute("data-modal-id") || "modal";
+  if(focusKey !== lastModalFocusKey){
+    lastModalFocusKey = focusKey;
+    modal.focus();
+  }
+  modalKeydownHandler = function(e){
+    var current = topModalEl();
+    if(!current) return;
+    if(e.key==="Escape"){
+      var dismiss = current.querySelector("[data-modal-dismiss]");
+      if(dismiss) dismiss.click();
+      return;
+    }
+    if(e.key!=="Tab") return;
+    var items = current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+    if(!items.length) return;
+    var first = items[0], last = items[items.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener("keydown", modalKeydownHandler);
 }
 
 function renderTopNav(){
@@ -1571,13 +1627,13 @@ function renderTopNav(){
   }).join("");
   return '<header class="topnav">'+
     '<h1>Myositis Home Companion</h1>'+
-    '<div class="role-toggle">'+
-      '<button class="'+(State.role==="patient"?"active":"")+'" onclick="Actions.setRole(\'patient\')">Patient View</button>'+
-      '<button class="'+(State.role==="clinician"?"active":"")+'" onclick="Actions.setRole(\'clinician\')">Clinician View</button>'+
+    '<div class="role-toggle" role="tablist" aria-label="Role">'+
+      '<button role="tab" aria-selected="'+(State.role==="patient"?"true":"false")+'" class="'+(State.role==="patient"?"active":"")+'" onclick="Actions.setRole(\'patient\')">Patient View</button>'+
+      '<button role="tab" aria-selected="'+(State.role==="clinician"?"true":"false")+'" class="'+(State.role==="clinician"?"active":"")+'" onclick="Actions.setRole(\'clinician\')">Clinician View</button>'+
     '</div>'+
     (State.role==="patient" ? (
-      '<div class="row"><label class="muted" style="font-size:12px;">Viewing as (demo login):</label>'+
-      '<select onchange="Actions.setPatientId(this.value)">'+patientOptions+'</select></div>'
+      '<div class="row"><label class="muted" for="patientPickerSelect" style="font-size:12px;">Viewing as (demo login):</label>'+
+      '<select id="patientPickerSelect" onchange="Actions.setPatientId(this.value)">'+patientOptions+'</select></div>'
     ) : "")+
     '<div style="flex:1"></div>'+
     '<button class="btn ghost" onclick="Actions.resetDemo()">Reset demo data</button>'+
@@ -1588,9 +1644,9 @@ function renderTopNav(){
 function renderPatientRole(){
   var p = getPatient(State.patientId);
   var tabs = [["dashboard","Dashboard"],["log","Daily Log"],["program","My Program"],["library","Exercise Library"],["trends","Trends"],["sharing","Sharing"]];
-  var html = '<main>';
-  html += '<div class="tabs">'+tabs.map(function(t){
-    return '<button class="'+(State.patientView===t[0]?"active":"")+'" onclick="Actions.setPatientView(\''+t[0]+'\')">'+t[1]+'</button>';
+  var html = '<main id="mainContent">';
+  html += '<div class="tabs" role="tablist" aria-label="Patient sections">'+tabs.map(function(t){
+    return '<button role="tab" aria-selected="'+(State.patientView===t[0]?"true":"false")+'" class="'+(State.patientView===t[0]?"active":"")+'" onclick="Actions.setPatientView(\''+t[0]+'\')">'+t[1]+'</button>';
   }).join("")+'</div>';
 
   var gate = Rules.gateCheck(p);
@@ -1634,31 +1690,31 @@ function renderPatientRole(){
 
 function renderCheckinModal(p, missed){
   if(!State.checkinDraft){
-    return '<div class="modal-overlay"><div class="modal">'+
-      '<h2>Welcome back!</h2>'+
+    return '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkinNudgeTitle" data-modal-id="checkin-nudge">'+
+      '<h2 id="checkinNudgeTitle">Welcome back!</h2>'+
       '<p>We haven’t seen a log from you in '+missed.daysSinceLastLog+' days (since '+fmtDate(missed.lastLogDate)+'). '+
       'If you’ve been doing well, no worries at all — just pick back up with today’s plan whenever you’re ready.</p>'+
       '<p class="muted">We’d also like a quick before/after check so we can keep an eye on how you’re doing.</p>'+
       '<div class="row" style="justify-content:flex-end;margin-top:14px;">'+
-        '<button class="btn ghost" onclick="Actions.dismissCheckinNudge()">Skip for now</button>'+
+        '<button class="btn ghost" data-modal-dismiss onclick="Actions.dismissCheckinNudge()">Skip for now</button>'+
         '<button class="btn" onclick="Actions.startCheckin()">Quick check-in</button>'+
       '</div>'+
     '</div></div>';
   }
   var lc = missed.lastCompletedLog;
   var draft = State.checkinDraft;
-  return '<div class="modal-overlay"><div class="modal">'+
-    '<h2>Quick check-in</h2>'+
+  return '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkinFormTitle" data-modal-id="checkin-form">'+
+    '<h2 id="checkinFormTitle">Quick check-in</h2>'+
     (lc ? '<p class="muted">After your last completed session on <strong>'+fmtDate(lc.date)+'</strong>, you logged pain <strong>'+lc.pain+'/10</strong> and fatigue <strong>'+lc.fatigue+'/10</strong>.</p>'
         : '<p class="muted">We don’t have a completed session on file yet.</p>')+
     '<form onsubmit="Actions.submitCheckin(event)">'+
       '<div class="grid">'+
-        '<div class="field"><label>How is your pain right now? (0–10)</label><input type="number" name="currentPain" min="0" max="10" required></div>'+
-        '<div class="field"><label>How is your fatigue right now? (0–10)</label><input type="number" name="currentFatigue" min="0" max="10" required></div>'+
+        '<div class="field"><label for="currentPainInput">How is your pain right now? (0–10)</label><input id="currentPainInput" type="number" name="currentPain" min="0" max="10" required></div>'+
+        '<div class="field"><label for="currentFatigueInput">How is your fatigue right now? (0–10)</label><input id="currentFatigueInput" type="number" name="currentFatigue" min="0" max="10" required></div>'+
       '</div>'+
-      '<div class="field"><label>How have you been feeling?</label><textarea name="feeling" rows="2" placeholder="Anything you want your PT to know..."></textarea></div>'+
-      '<div class="field"><label>Do you have any concerns you’d like your PT to know about?</label>'+
-        '<div class="yesno">'+
+      '<div class="field"><label for="checkinFeelingInput">How have you been feeling?</label><textarea id="checkinFeelingInput" name="feeling" rows="2" placeholder="Anything you want your PT to know..."></textarea></div>'+
+      '<div class="field"><label id="checkinConcernLabel">Do you have any concerns you’d like your PT to know about?</label>'+
+        '<div class="yesno" role="group" aria-labelledby="checkinConcernLabel">'+
           '<button type="button" class="'+(draft.concern==="yes"?"selected-yes":"")+'" onclick="Actions.setCheckinConcern(this,\'yes\')">Yes</button>'+
           '<button type="button" class="'+(draft.concern==="no"?"selected-no":"")+'" onclick="Actions.setCheckinConcern(this,\'no\')">No</button>'+
         '</div></div>'+
@@ -1715,8 +1771,8 @@ function renderPatientLog(p){
   html += '<form onsubmit="Actions.saveDailyLog(event)">';
 
   html += '<div class="grid">';
-  html += '<div class="field"><label>Pain (0–10)</label><input type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
-  html += '<div class="field"><label>Fatigue (0–10)</label><input type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
+  html += '<div class="field"><label for="dailyLogPainInput">Pain (0–10)</label><input id="dailyLogPainInput" type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
+  html += '<div class="field"><label for="dailyLogFatigueInput">Fatigue (0–10)</label><input id="dailyLogFatigueInput" type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
   html += '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
   html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
@@ -1791,16 +1847,16 @@ function renderPhaseProgressionCard(p, clinicianMode){
 
   if(clinicianMode){
     html += '<div class="grid">';
-    html += '<div class="field"><label>Progression model</label><select onchange="Actions.setProgressionModel(\''+p.id+'\',this.value)">'+
+    html += '<div class="field"><label for="progressionModelSelect">Progression model</label><select id="progressionModelSelect" onchange="Actions.setProgressionModel(\''+p.id+'\',this.value)">'+
       '<option value="parallel"'+(p.progressionModel==="parallel"?" selected":"")+'>Parallel</option>'+
       '<option value="sequential"'+(p.progressionModel==="sequential"?" selected":"")+'>Sequential</option>'+
       '</select></div>';
-    html += '<div class="field"><label>Dosage frequency</label><select onchange="Actions.setDosageFrequency(\''+p.id+'\',this.value)">'+
+    html += '<div class="field"><label for="dosageFrequencySelect">Dosage frequency</label><select id="dosageFrequencySelect" onchange="Actions.setDosageFrequency(\''+p.id+'\',this.value)">'+
       [1,2,3].map(function(n){ return '<option value="'+n+'"'+(p.dosageFrequencyDays===n?" selected":"")+'>'+(n===1?"Every day":n===2?"Every other day":"Every 3rd day")+'</option>'; }).join("")+
       '</select></div>';
     html += '</div>';
     html += '<div class="toggle-row"><div><strong>ROM confirmed</strong><div class="muted">Stands in for the motion-capture ROM check (no real motion-capture input exists yet).</div></div>'+
-      '<label class="switch"><input type="checkbox" '+(p.romConfirmed?"checked":"")+' onchange="Actions.toggleRomConfirmed(\''+p.id+'\')"><span class="slider"></span></label></div>';
+      '<label class="switch"><input type="checkbox" aria-label="ROM confirmed" '+(p.romConfirmed?"checked":"")+' onchange="Actions.toggleRomConfirmed(\''+p.id+'\')"><span class="slider"></span></label></div>';
   }
 
   html += '<h3>Dosage</h3>'+renderDosageBars(p);
@@ -1890,21 +1946,43 @@ function exerciseReferenceHtml(name, imgWidthPct){
 // unaffected.
 Actions.showExerciseZoom = function(name){
   Actions.closeExerciseZoom();
+  var opener = document.activeElement; // restore focus here on close (the "View larger" link)
   var overlay = document.createElement("div");
   overlay.id = "exerciseZoomOverlay";
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(20,25,35,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;";
   overlay.onclick = function(e){ if(e.target===overlay) Actions.closeExerciseZoom(); };
-  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px;position:relative;">'+
-    '<button type="button" onclick="Actions.closeExerciseZoom()" aria-label="Close" '+
+  overlay.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="exerciseZoomTitle" tabindex="-1" style="position:relative;">'+
+    '<button type="button" data-modal-dismiss onclick="Actions.closeExerciseZoom()" aria-label="Close" '+
       'style="position:absolute;top:12px;right:12px;background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:4px;">✕</button>'+
-    '<h2 style="margin:0 0 12px;padding-right:28px;">'+escapeHtml(name)+'</h2>'+
+    '<h2 id="exerciseZoomTitle" style="margin:0 0 12px;padding-right:28px;">'+escapeHtml(name)+'</h2>'+
     exerciseReferenceHtml(name, 32)+
   '</div>';
   document.body.appendChild(overlay);
+  var dialog = overlay.firstElementChild;
+  dialog.focus();
+  overlay.__opener = opener;
+  // This overlay lives outside #app and outside the normal render() cycle (see the note above
+  // Actions.showExerciseZoom's definition... actually appended directly to document.body so a
+  // later unrelated render() of #app never touches it), so it needs its own Escape/focus-trap
+  // listener rather than relying on setupModalA11y, which only looks inside #app.
+  overlay.__keydownHandler = function(e){
+    if(e.key==="Escape"){ Actions.closeExerciseZoom(); return; }
+    if(e.key!=="Tab") return;
+    var items = dialog.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+    if(!items.length) return;
+    var first = items[0], last = items[items.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener("keydown", overlay.__keydownHandler);
 };
 Actions.closeExerciseZoom = function(){
   var el = document.getElementById("exerciseZoomOverlay");
-  if(el) el.remove();
+  if(!el) return;
+  if(el.__keydownHandler) document.removeEventListener("keydown", el.__keydownHandler);
+  var opener = el.__opener;
+  el.remove();
+  if(opener && typeof opener.focus==="function") opener.focus();
 };
 // Opens the same photos + instructions in a genuinely separate tab/window via window.open('')
 // + document.write -- not a data: URL (increasingly blocked as a top-level navigation target in
@@ -1938,10 +2016,10 @@ function renderExerciseRpePrompt(){
   var p = getPatient(flow.patientId);
   var exercise = p.phaseDosage[flow.index];
   var isLast = flow.index === p.phaseDosage.length-1;
-  return '<div class="modal-overlay"><div class="modal" style="position:relative;">'+
-    '<button type="button" onclick="Actions.exitWorkout()" aria-label="Exit workout" title="Exit workout" '+
+  return '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="exerciseModalTitle" data-modal-id="exercise-'+flow.index+'" style="position:relative;">'+
+    '<button type="button" data-modal-dismiss onclick="Actions.exitWorkout()" aria-label="Exit workout" title="Exit workout" '+
       'style="position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px;">✕</button>'+
-    '<h2 style="padding-right:28px;">'+escapeHtml(exercise.name)+'</h2>'+
+    '<h2 id="exerciseModalTitle" style="padding-right:28px;">'+escapeHtml(exercise.name)+'</h2>'+
     '<p class="muted" style="margin:0 0 8px;">Exercise '+(flow.index+1)+' of '+p.phaseDosage.length+'</p>'+
     '<div style="background:var(--primary-bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;text-align:center;">'+
       '<p style="margin:0;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Today’s goal</p>'+
@@ -1978,14 +2056,14 @@ function renderExerciseRpePrompt(){
       '</div>'+
       '<div id="goalAdjustFields" style="display:none;">'+
         '<div class="grid">'+
-          '<div class="field"><label>Sets completed</label>'+
+          '<div class="field"><label for="setsCompletedInput">Sets completed</label>'+
             '<div class="stepper">'+
               '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',-1)" aria-label="Decrease sets">−</button>'+
               '<input type="number" id="setsCompletedInput" name="setsCompleted" min="0" max="10" value="'+exercise.currentSets+'" required>'+
               '<button type="button" class="plus" onclick="Actions.stepCounterInput(\'setsCompletedInput\',1)" aria-label="Increase sets">+</button>'+
             '</div>'+
           '</div>'+
-          '<div class="field"><label>Reps completed (last set)</label>'+
+          '<div class="field"><label for="repsCompletedInput">Reps completed (last set)</label>'+
             '<div class="stepper">'+
               '<button type="button" class="minus" onclick="Actions.stepCounterInput(\'repsCompletedInput\',-1)" aria-label="Decrease reps">−</button>'+
               '<input type="number" id="repsCompletedInput" name="repsCompleted" min="0" max="50" value="'+exercise.targetReps+'" required>'+
@@ -1995,7 +2073,7 @@ function renderExerciseRpePrompt(){
         '</div>'+
         '<p style="text-align:center;margin-top:-4px;"><a href="#" onclick="Actions.reopenGoalAsk(); return false;">← Back</a></p>'+
       '</div>'+
-      '<div class="field"><label>Borg RPE Scale — how hard did that feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field" role="group" aria-labelledby="exerciseRpeLabel"><label id="exerciseRpeLabel">Borg RPE Scale — how hard did that feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
         '<button type="submit" class="btn">'+(isLast?"Next: rate the whole session":"Next exercise")+'</button>'+
       '</div>'+
@@ -2007,13 +2085,13 @@ function renderSessionWrapupPrompt(){
   var flow = State.pendingRpePrompt;
   var p = getPatient(flow.patientId);
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); }) || {};
-  return '<div class="modal-overlay"><div class="modal">'+
-    '<h2>How did the whole session feel?</h2>'+
+  return '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="wrapupModalTitle" data-modal-id="wrapup">'+
+    '<h2 id="wrapupModalTitle">How did the whole session feel?</h2>'+
     '<p class="muted">Rate your overall effort, and how you’re feeling now that you’re done.</p>'+
     '<form onsubmit="Actions.submitSessionWrapup(event)">'+
-      '<div class="field"><label>Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
-      '<div class="field"><label>How much pain do you have right now?</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
-      '<div class="field"><label>How much fatigue do you have right now?</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
+      '<div class="field" role="group" aria-labelledby="wrapupRpeLabel"><label id="wrapupRpeLabel">Borg RPE Scale — overall, how hard did the whole session feel?</label>'+BORG_RPE_LEGEND+renderScaleButtons("rpe")+'</div>'+
+      '<div class="field" role="group" aria-labelledby="wrapupPainLabel"><label id="wrapupPainLabel">How much pain do you have right now?</label>'+PAIN_SCALE_LEGEND+renderScaleButtons("pain", todayLog.pain)+'</div>'+
+      '<div class="field" role="group" aria-labelledby="wrapupFatigueLabel"><label id="wrapupFatigueLabel">How much fatigue do you have right now?</label>'+FATIGUE_SCALE_LEGEND+renderScaleButtons("fatigue", todayLog.fatigue)+'</div>'+
       '<div class="field">'+
         '<label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+' onchange="Actions.toggleWrapupFollowup(this.checked)"> Is any pain or fatigue above related to your last exercise session?</label>'+
       '</div>'+
@@ -2021,8 +2099,8 @@ function renderSessionWrapupPrompt(){
       // fill out if the patient just said there's no lingering pain/fatigue from the session.
       '<div id="wrapupFollowup" style="display:'+(todayLog.postExerciseRelated?"block":"none")+';border-left:2px solid var(--border);padding-left:10px;margin:-4px 0 12px 4px;">'+
         '<div class="field" style="margin-top:10px;"><label><input type="checkbox" id="adlImpactBox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> Is this affecting your daily activities?</label></div>'+
-        '<div class="field"><label>Anything else to mention? <span class="muted" style="font-weight:400;font-size:12px;">(optional)</span></label>'+
-          '<textarea name="exerciseConcerns" rows="2" placeholder="e.g., which exercise, when it started, how it feels">'+escapeHtml(todayLog.exerciseConcerns||"")+'</textarea>'+
+        '<div class="field"><label for="exerciseConcernsInput">Anything else to mention? <span class="muted" style="font-weight:400;font-size:12px;">(optional)</span></label>'+
+          '<textarea id="exerciseConcernsInput" name="exerciseConcerns" rows="2" placeholder="e.g., which exercise, when it started, how it feels">'+escapeHtml(todayLog.exerciseConcerns||"")+'</textarea>'+
         '</div>'+
       '</div>'+
       '<div class="row" style="justify-content:flex-end;margin-top:10px;">'+
@@ -2036,7 +2114,7 @@ function renderPostSessionModal(){
   var p = getPatient(summary.patientId);
   var check = Rules.checkPhaseAdvancement(p);
   var completeCount = p.phaseDosage.filter(function(d){ return d.currentSets>=d.targetSets; }).length;
-  var html = '<div class="modal-overlay"><div class="modal"><h2>Nice work today!</h2>';
+  var html = '<div class="modal-overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="postSessionModalTitle" data-modal-id="post-session"><h2 id="postSessionModalTitle">Nice work today!</h2>';
   if(summary.sessionNumber>1){
     html += '<p class="muted">That’s session '+summary.sessionNumber+' today.</p>';
   }
@@ -2065,7 +2143,7 @@ function renderPostSessionModal(){
     html += '<p class="muted">'+completeCount+'/'+p.phaseDosage.length+' exercises are at full dosage.</p>';
   }
 
-  html += '<div class="row" style="justify-content:flex-end;margin-top:10px;"><button class="btn" onclick="Actions.dismissPostSessionSummary()">Got it</button></div>';
+  html += '<div class="row" style="justify-content:flex-end;margin-top:10px;"><button class="btn" data-modal-dismiss onclick="Actions.dismissPostSessionSummary()">Got it</button></div>';
   html += '</div></div>';
   return html;
 }
@@ -2251,7 +2329,7 @@ function renderSharing(p){
   if(status.sharingEnabled && link && linkStatus!=="none"){
     var statusPill = {active:"alert-success", expired:"alert-warning", revoked:"alert-danger", none:"alert-info"}[linkStatus] || "alert-info";
     html += '<div class="toggle-row"><div><strong>'+escapeHtml(link.ptName)+'</strong><div class="muted">'+escapeHtml(link.ptEmail)+'</div></div>'+
-      '<label class="switch"><input type="checkbox" checked '+(State.sharingBusy?"disabled":"")+' onchange="Actions.disableSharing()"><span class="slider"></span></label></div>';
+      '<label class="switch"><input type="checkbox" aria-label="Sharing enabled" checked '+(State.sharingBusy?"disabled":"")+' onchange="Actions.disableSharing()"><span class="slider"></span></label></div>';
 
     html += '<div class="alert '+statusPill+'"><h4>Link status: '+linkStatus.charAt(0).toUpperCase()+linkStatus.slice(1)+'</h4>';
     html += 'Sent '+fmtDateTime(link.createdAt)+' &middot; expires '+fmtDateTime(link.expiresAt)+'<br>';
@@ -2261,7 +2339,7 @@ function renderSharing(p){
     html += '</div>';
 
     if(linkStatus==="active" && link.url){
-      html += '<div class="field"><label>Share link</label><input type="text" readonly value="'+escapeHtml(link.url)+'" onclick="this.select()"></div>';
+      html += '<div class="field"><label for="shareLinkInput">Share link</label><input id="shareLinkInput" type="text" readonly value="'+escapeHtml(link.url)+'" onclick="this.select()"></div>';
     }
 
     html += '<div class="row">';
@@ -2273,8 +2351,8 @@ function renderSharing(p){
   } else {
     html += '<p class="muted">Sharing is currently <strong>OFF</strong>. Turn it on and enter your local PT’s details to email them a secure, view-only link.</p>';
     html += '<form onsubmit="Actions.enableSharing(event)"><div class="grid">'+
-      '<div class="field"><label>PT name</label><input type="text" name="ptName" required placeholder="e.g. Dana Kim, PT"></div>'+
-      '<div class="field"><label>PT email</label><input type="text" name="ptEmail" required placeholder="pt@clinic.example"></div>'+
+      '<div class="field"><label for="ptNameInput">PT name</label><input id="ptNameInput" type="text" name="ptName" required placeholder="e.g. Dana Kim, PT"></div>'+
+      '<div class="field"><label for="ptEmailInput">PT email</label><input id="ptEmailInput" type="text" name="ptEmail" required placeholder="pt@clinic.example"></div>'+
       '</div><button type="submit" class="btn" '+(State.sharingBusy?"disabled":"")+'>Turn on sharing &amp; send link</button></form>';
   }
 
@@ -2288,7 +2366,7 @@ function renderSharingLocalOnly(p){
   var html = '<div class="card"><h2>Sharing Settings</h2>';
   html += '<div class="alert alert-info">No sharing backend is configured for this deployment (SHARING_API_BASE is blank), so this is local-only demo mode: the toggle just flips a flag in this browser’s local storage — no email is sent and there’s no revocable link. See /server in the repo for the real implementation.</div>';
   html += '<div class="toggle-row"><div><strong>'+escapeHtml(p.localPtName)+'</strong><div class="muted">When on, flagged check-ins and concerns may be shared with your local PT.</div></div>';
-  html += '<label class="switch"><input type="checkbox" '+(p.sharingEnabled?"checked":"")+' onchange="Actions.toggleSharing()"><span class="slider"></span></label></div>';
+  html += '<label class="switch"><input type="checkbox" aria-label="Sharing enabled" '+(p.sharingEnabled?"checked":"")+' onchange="Actions.toggleSharing()"><span class="slider"></span></label></div>';
   html += '<p class="muted">Sharing is currently <strong>'+(p.sharingEnabled?"ON":"OFF")+'</strong>. This choice is always yours — the app will never override it.</p>';
   html += '</div>';
   return html;
@@ -2296,7 +2374,7 @@ function renderSharingLocalOnly(p){
 
 /* ======================== Render: Clinician role ======================== */
 function renderClinicianRole(){
-  var html = '<main>';
+  var html = '<main id="mainContent">';
   if(State.clinicianView==="list"){
     html += renderClinicianList();
   } else {
@@ -2316,7 +2394,9 @@ function renderClinicianList(){
     var badges = "";
     if(stop.triggered) badges += ' <span class="pill" style="background:#fdeceb;color:#b3241c;">STOP ALERT</span>';
     if(gate.blocked) badges += ' <span class="pill" style="background:#fff6df;color:#9a6b00;">NOT CLEARED</span>';
-    html += '<div class="patient-card" onclick="Actions.openClinicianPatient(\''+p.id+'\')">'+
+    html += '<div class="patient-card" role="button" tabindex="0" '+
+      'onclick="Actions.openClinicianPatient(\''+p.id+'\')" '+
+      'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();Actions.openClinicianPatient(\''+p.id+'\');}">'+
       '<div class="name">'+escapeHtml(p.name)+badges+'</div>'+
       '<div class="muted">'+escapeHtml(p.diagnosisSubtype)+' &middot; '+p.sessionsPerWeek+'x/week</div>'+
     '</div>';
@@ -2330,8 +2410,8 @@ function renderClinicianDetail(p){
   html += '<div class="card"><h2>'+escapeHtml(p.name)+'</h2><p class="muted">'+escapeHtml(p.diagnosisSubtype)+' &middot; Local PT: '+escapeHtml(p.localPtName)+' &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p></div>';
 
   var tabs = [["alerts","Alerts"],["program","Program"],["fom","Functional Measures"],["mmt","MMT"],["clearance","Clearance / Flare"],["pdfimport","PDF Import"]];
-  html += '<div class="tabs">'+tabs.map(function(t){
-    return '<button class="'+(State.clinicianDetailTab===t[0]?"active":"")+'" onclick="Actions.setClinicianTab(\''+t[0]+'\')">'+t[1]+'</button>';
+  html += '<div class="tabs" role="tablist" aria-label="Patient detail sections">'+tabs.map(function(t){
+    return '<button role="tab" aria-selected="'+(State.clinicianDetailTab===t[0]?"true":"false")+'" class="'+(State.clinicianDetailTab===t[0]?"active":"")+'" onclick="Actions.setClinicianTab(\''+t[0]+'\')">'+t[1]+'</button>';
   }).join("")+'</div>';
 
   if(State.clinicianDetailTab==="alerts") html += renderClinicianAlerts(p);
@@ -2447,9 +2527,9 @@ function renderClinicianFom(p){
   var html = '<div class="card"><h2>Enter Functional Outcome Measures</h2>';
   if(isIbm) html += '<p class="muted">This patient’s diagnosis subtype is IBM, so the itemized IBMFRS is used here instead of FI-2/FI-3.</p>';
   html += '<form onsubmit="Actions.saveFom(event)"><div class="grid">';
-  html += '<div class="field"><label>Date</label><input type="date" name="date" value="'+todayISO()+'" required></div>';
+  html += '<div class="field"><label for="fomDateInput">Date</label><input id="fomDateInput" type="date" name="date" value="'+todayISO()+'" required></div>';
   FOM_COMMON_MEASURES.forEach(function(m){
-    html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.1" name="'+m.key+'"></div>';
+    html += '<div class="field"><label for="fom_'+m.key+'">'+m.label+'</label><input id="fom_'+m.key+'" type="number" step="0.1" name="'+m.key+'"></div>';
   });
   html += '</div>';
   if(isIbm){
@@ -2457,8 +2537,8 @@ function renderClinicianFom(p){
     html += '<p class="muted">Placeholder item labels — see code comment on IBMFRS_ITEMS for why exact validated wording still needs to be sourced.</p>';
     html += '<div class="grid">';
     IBMFRS_ITEMS.forEach(function(it){
-      html += '<div class="field"><label>'+it.label+': '+it.placeholder+'</label>'+
-        '<select name="'+it.key+'" onchange="Actions.recalcIbmfrsTotal(this.form)">'+
+      html += '<div class="field"><label for="fom_'+it.key+'">'+it.label+': '+it.placeholder+'</label>'+
+        '<select id="fom_'+it.key+'" name="'+it.key+'" onchange="Actions.recalcIbmfrsTotal(this.form)">'+
         [0,1,2,3,4].map(function(v){ return '<option value="'+v+'">'+v+'</option>'; }).join("")+
         '</select></div>';
     });
@@ -2467,7 +2547,7 @@ function renderClinicianFom(p){
   } else {
     html += '<div class="grid">';
     FOM_NON_IBM_MEASURES.forEach(function(m){
-      html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.1" name="'+m.key+'"></div>';
+      html += '<div class="field"><label for="fom_'+m.key+'">'+m.label+'</label><input id="fom_'+m.key+'" type="number" step="0.1" name="'+m.key+'"></div>';
     });
     html += '</div>';
   }
@@ -2485,7 +2565,7 @@ function renderClinicianFom(p){
 
   var activeMeasure = measures.some(function(m){return m.key===State.fomMeasure;}) ? State.fomMeasure : measures[0].key;
   var measureDef = measures.find(function(m){ return m.key===activeMeasure; });
-  html += '<div class="card"><h2>Trend</h2><div class="field"><label>Measure</label><select onchange="Actions.setFomMeasure(this.value)">'+
+  html += '<div class="card"><h2>Trend</h2><div class="field"><label for="fomMeasureSelect">Measure</label><select id="fomMeasureSelect" onchange="Actions.setFomMeasure(this.value)">'+
     measures.map(function(m){ return '<option value="'+m.key+'"'+(activeMeasure===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
     '</select></div>';
   var pts = p.fom.filter(function(f){ return f[activeMeasure]!=null; }).map(function(f){ return {date:f.date, value:f[activeMeasure]}; });
@@ -2525,13 +2605,13 @@ function renderIbmfrsItemBreakdown(p){
 function renderClinicianMmt(p){
   var html = '<div class="card"><h2>Enter Manual Muscle Test (0–5)</h2>';
   html += '<form onsubmit="Actions.saveMmt(event)"><div class="grid">';
-  html += '<div class="field"><label>Date</label><input type="date" name="date" value="'+todayISO()+'" required></div>';
+  html += '<div class="field"><label for="mmtDateInput">Date</label><input id="mmtDateInput" type="date" name="date" value="'+todayISO()+'" required></div>';
   MUSCLES.forEach(function(m){
-    html += '<div class="field"><label>'+m.label+'</label><input type="number" step="0.5" min="0" max="5" name="'+m.key+'"></div>';
+    html += '<div class="field"><label for="mmt_'+m.key+'">'+m.label+'</label><input id="mmt_'+m.key+'" type="number" step="0.5" min="0" max="5" name="'+m.key+'"></div>';
   });
   html += '</div><button type="submit" class="btn">Save MMT</button></form></div>';
 
-  html += '<div class="card"><h2>Trend</h2><div class="field"><label>Muscle group</label><select onchange="Actions.setMmtMuscle(this.value)">'+
+  html += '<div class="card"><h2>Trend</h2><div class="field"><label for="mmtMuscleSelect">Muscle group</label><select id="mmtMuscleSelect" onchange="Actions.setMmtMuscle(this.value)">'+
     MUSCLES.map(function(m){ return '<option value="'+m.key+'"'+(State.mmtMuscle===m.key?" selected":"")+'>'+m.label+'</option>'; }).join("")+
     '</select></div>';
   var pts = p.mmt.filter(function(f){ return f[State.mmtMuscle]!=null; }).map(function(f){ return {date:f.date, value:f[State.mmtMuscle]}; });
@@ -2547,9 +2627,9 @@ function renderClinicianMmt(p){
 function renderClinicianClearance(p){
   var html = '<div class="card"><h2>Physician Clearance / Flare Status</h2>';
   html += '<div class="toggle-row"><div><strong>Cleared for exercise</strong><div class="muted">Gate check blocks the program when off.</div></div>'+
-    '<label class="switch"><input type="checkbox" '+(p.clearedForExercise?"checked":"")+' onchange="Actions.toggleClearance(\''+p.id+'\')"><span class="slider"></span></label></div>';
+    '<label class="switch"><input type="checkbox" aria-label="Cleared for exercise" '+(p.clearedForExercise?"checked":"")+' onchange="Actions.toggleClearance(\''+p.id+'\')"><span class="slider"></span></label></div>';
   html += '<div class="toggle-row"><div><strong>Currently in flare</strong><div class="muted">Gate check blocks the program when on.</div></div>'+
-    '<label class="switch"><input type="checkbox" '+(p.inFlare?"checked":"")+' onchange="Actions.toggleFlare(\''+p.id+'\')"><span class="slider"></span></label></div>';
+    '<label class="switch"><input type="checkbox" aria-label="Currently in flare" '+(p.inFlare?"checked":"")+' onchange="Actions.toggleFlare(\''+p.id+'\')"><span class="slider"></span></label></div>';
   html += '</div>';
   return html;
 }
