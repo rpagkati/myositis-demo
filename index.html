@@ -154,6 +154,17 @@
   .field-invalid{outline:2px solid var(--danger);outline-offset:6px;border-radius:8px;}
   .field-error{color:var(--danger);font-size:12.5px;font-weight:600;margin:8px 0 0;}
   .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:300;max-width:420px;width:calc(100% - 32px);display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);}
+  /* Dashboard "hero" greeting: sits directly on the page background (no card border), so the
+     landing screen isn't every section boxed in gray -- reserves the heavier card treatment for
+     the actionable parts (the CTA, the stats). */
+  .dash-hero{padding:6px 2px 18px;}
+  .dash-greeting-eyebrow{margin:0;color:var(--muted);font-size:13px;font-weight:600;}
+  .dash-greeting-name{margin:2px 0 0;font-size:27px;font-weight:800;color:var(--text);line-height:1.2;}
+  .chip{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap;}
+  .dash-cta-card{padding:22px 18px;}
+  .dash-stats-card{display:flex;align-items:center;gap:18px;}
+  .stat-ring-wrap{position:relative;width:84px;height:84px;flex-shrink:0;}
+  .stat-ring-wrap .stat-ring-value{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:var(--text);}
 </style>
 </head>
 <body>
@@ -881,6 +892,29 @@ function svgSparkline(points, opts){
     return '<circle cx="'+x(p.date).toFixed(1)+'" cy="'+y(p.value).toFixed(1)+'" r="2.2" fill="'+color+'"><title>'+fmtDate(p.date)+': '+p.value+'</title></circle>';
   }).join("");
   return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="1.6"/>'+circles+'</svg>';
+}
+
+// Circular progress ring (think "activity ring") -- used on the patient dashboard to show weekly
+// adherence as a glanceable shape instead of a sentence of numbers. Rotated -90deg so the arc
+// starts at 12 o'clock, same convention as most ring-progress widgets.
+function svgProgressRing(pct, opts){
+  opts = opts||{};
+  var size = opts.size||84, stroke = opts.stroke||9, color = opts.color||"var(--primary)";
+  var r = (size-stroke)/2, c = size/2, circumference = 2*Math.PI*r;
+  var clamped = Math.max(0, Math.min(100, pct));
+  var offset = circumference * (1 - clamped/100);
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" style="transform:rotate(-90deg);">'+
+    '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="'+stroke+'"/>'+
+    '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+stroke+'" stroke-linecap="round" '+
+      'stroke-dasharray="'+circumference.toFixed(1)+'" stroke-dashoffset="'+offset.toFixed(1)+'"/>'+
+  '</svg>';
+}
+
+function timeOfDayGreeting(){
+  var h = new Date().getHours();
+  if(h<12) return "Good morning";
+  if(h<18) return "Good afternoon";
+  return "Good evening";
 }
 
 /* ======================== App State ======================== */
@@ -1788,9 +1822,24 @@ function renderPatientDashboard(p){
   var todayLog = p.dailyLogs.find(function(l){ return l.date===todayISO(); });
   var recentLogs = p.dailyLogs.filter(function(l){return l.logged;}).slice(-7);
   var adherenceNum = recentLogs.filter(function(l){return l.completed;}).length;
+  var adherencePct = recentLogs.length ? Math.round(100*adherenceNum/recentLogs.length) : 0;
   var canExercise = !Rules.gateCheck(p).blocked && !Rules.stopRegressionCheck(p).triggered;
-  var html = '<div class="card"><h2>Welcome back, '+escapeHtml(p.name)+'</h2>';
-  html += '<p class="muted">Diagnosis subtype (demo field): '+escapeHtml(p.diagnosisSubtype)+' &middot; Target sessions: '+p.sessionsPerWeek+'/week &middot; Target RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</p>';
+
+  // Greeting sits directly on the page background rather than in a bordered card -- a time-of-day
+  // greeting by first name feels more like arriving at a personal home screen than a form, and the
+  // diagnosis/sessions/RPE metadata (previously one dense run-on muted sentence, including a
+  // dev-facing "(demo field)" aside -- redundant anyway given the permanent research-prototype
+  // banner at the top of every screen) is now a few lightweight chips instead, so it reads as
+  // reference context rather than the main content.
+  var html = '<div class="dash-hero">'+
+    '<p class="dash-greeting-eyebrow">'+timeOfDayGreeting()+'</p>'+
+    '<h1 class="dash-greeting-name">'+escapeHtml(p.name.split(" ")[0])+'</h1>'+
+    '<div class="row" style="gap:6px;margin-top:10px;">'+
+      '<span class="chip">'+escapeHtml(p.diagnosisSubtype)+'</span>'+
+      '<span class="chip">🎯 '+p.sessionsPerWeek+'x/week</span>'+
+      '<span class="chip">RPE '+p.targetRPE.min+'–'+p.targetRPE.max+'</span>'+
+    '</div>'+
+  '</div>';
 
   // Primary call-to-action: starting a workout is the main thing a patient opens this app to do,
   // so it belongs front-and-center on the landing screen, not buried under Daily Log. Some
@@ -1798,21 +1847,32 @@ function renderPatientDashboard(p){
   // relabeled) after a session is already logged today -- rather than disappearing, which left no
   // way to start a second one.
   var sessionCount = (todayLog && todayLog.sessions) ? todayLog.sessions.length : 0;
+  html += '<div class="card dash-cta-card">';
   if(canExercise){
     if(sessionCount>0){
-      html += '<div class="alert alert-success">'+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. Thank you!</div>';
+      html += '<div class="alert alert-success" style="margin-bottom:16px;">✓ '+sessionCount+' session'+(sessionCount>1?"s":"")+' logged today. Thank you!</div>';
     }
-    html += '<div style="text-align:center;padding:20px 10px;background:var(--primary-bg);border-radius:10px;margin-bottom:12px;">'+
-      '<p style="margin:0 0 10px;font-weight:600;">'+(sessionCount>0?"Doing another session today?":"Ready for today’s session?")+'</p>'+
-      '<button class="btn" style="padding:12px 28px;font-size:16px;" onclick="Actions.startWorkout(\''+p.id+'\')">▶ '+(sessionCount>0?"Start Another Session":"Start Today’s Workout")+'</button>'+
+    html += '<div style="text-align:center;">'+
+      '<p style="margin:0 0 12px;font-weight:700;font-size:16px;">'+(sessionCount>0?"Doing another session today?":"Ready for today’s session?")+'</p>'+
+      '<button class="btn" style="padding:14px 30px;font-size:16px;" onclick="Actions.startWorkout(\''+p.id+'\')">▶ '+(sessionCount>0?"Start Another Session":"Start Today’s Workout")+'</button>'+
+      '<p class="muted" style="margin:14px 0 0;">Not exercising'+(sessionCount>0?" again":"")+' today? <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">Just log how you’re feeling</a></p>'+
     '</div>';
-    html += '<p class="muted" style="text-align:center;margin-top:-4px;">Not exercising'+(sessionCount>0?" again":"")+' today? <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">Just log how you’re feeling</a></p>';
   } else {
-    html += '<div class="alert alert-info">Exercise is on hold right now — see the alert above. You can still <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">log how you’re feeling</a>.</div>';
+    html += '<div class="alert alert-info" style="margin:0;">Exercise is on hold right now — see the alert above. You can still <a href="#" onclick="Actions.setPatientView(\'log\'); return false;">log how you’re feeling</a>.</div>';
   }
-
-  html += '<p>Last 7 logged days: <strong>'+adherenceNum+'</strong> of <strong>'+recentLogs.length+'</strong> completed.</p>';
   html += '</div>';
+
+  // Weekly adherence as a glanceable ring instead of a plain "X of Y" sentence buried at the
+  // bottom of the CTA card -- a dashboard should let you read your standing at a glance.
+  html += '<div class="card dash-stats-card">'+
+    '<div class="stat-ring-wrap">'+svgProgressRing(adherencePct, {color: adherencePct>=70?"var(--success)":"var(--primary)"})+
+      '<div class="stat-ring-value">'+adherencePct+'%</div>'+
+    '</div>'+
+    '<div>'+
+      '<p style="margin:0;font-weight:700;font-size:14px;">This week’s adherence</p>'+
+      '<p class="muted" style="margin:3px 0 0;">'+adherenceNum+' of '+recentLogs.length+' logged days completed</p>'+
+    '</div>'+
+  '</div>';
   return html;
 }
 
