@@ -1134,6 +1134,16 @@ Actions.saveDailyLog = function(ev){
   if(!existing) p.dailyLogs.push(entry);
   saveData();
   render();
+  // Clear the form after a successful save so it doesn't look like it's still showing
+  // unsaved input -- the just-saved values are confirmed in the "Recent history" table below.
+  var painInput = document.getElementById("dailyLogPainInput");
+  var fatigueInput = document.getElementById("dailyLogFatigueInput");
+  var postExBox = document.getElementById("dailyLogPostExerciseRelatedBox");
+  var adlBox = document.getElementById("dailyLogAdlImpactBox");
+  if(painInput) painInput.value = "";
+  if(fatigueInput) fatigueInput.value = "";
+  if(postExBox) postExBox.checked = false;
+  if(adlBox) adlBox.checked = false;
   Actions.showToast("✓ Saved today's log.", "success");
 };
 
@@ -1910,8 +1920,8 @@ function renderPatientLog(p){
   html += '<div class="field"><label for="dailyLogPainInput">Pain (0–10)</label><input id="dailyLogPainInput" type="number" name="pain" min="0" max="10" value="'+(todayLog.pain!=null?todayLog.pain:"")+'" required></div>';
   html += '<div class="field"><label for="dailyLogFatigueInput">Fatigue (0–10)</label><input id="dailyLogFatigueInput" type="number" name="fatigue" min="0" max="10" value="'+(todayLog.fatigue!=null?todayLog.fatigue:"")+'" required></div>';
   html += '</div>';
-  html += '<div class="field"><label><input type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
-  html += '<div class="field"><label><input type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
+  html += '<div class="field"><label><input id="dailyLogPostExerciseRelatedBox" type="checkbox" name="postExerciseRelated" '+(todayLog.postExerciseRelated?"checked":"")+'> This pain/fatigue is related to my last exercise session</label></div>';
+  html += '<div class="field"><label><input id="dailyLogAdlImpactBox" type="checkbox" name="adlImpact" '+(todayLog.adlImpact?"checked":"")+'> This is affecting my daily activities</label></div>';
 
   html += '<button type="submit" class="btn">Save today’s log</button>';
   html += '</form></div>';
